@@ -1,0 +1,5 @@
+{
+  "name": "Ephemeral Infinity Board",
+  "description": "A boundless, social whiteboard where ideas flourish and fade. Features an infinite canvas, sticky notes with a 60-second lifespan, and Gemini-powered brainstorming.",
+  "requestFramePermissions": []
+}
