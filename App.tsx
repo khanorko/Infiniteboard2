@@ -5,32 +5,54 @@ import ClusterGroup from './components/ClusterGroup';
 import Toolbar from './components/Toolbar';
 import Minimap from './components/Minimap';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
-import { Sparkles, Loader2, Info, MousePointer2, BoxSelect, Ungroup } from 'lucide-react';
+import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff } from 'lucide-react';
+import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint } from './utils/bigCoords';
+import {
+  isSupabaseConfigured,
+  fetchNotes,
+  fetchClusters,
+  createNoteInDb,
+  updateNoteInDb,
+  deleteNoteFromDb,
+  moveNotesInDb,
+  createClusterInDb,
+  updateClusterInDb,
+  deleteClusterFromDb,
+  subscribeToBoard,
+  unsubscribeFromBoard,
+} from './services/supabaseService';
+import type { RealtimeChannel } from '@supabase/supabase-js';
 
 // --- Multiplayer Helpers ---
 const BROADCAST_CHANNEL_NAME = 'ephemeral-board-sync';
 const MY_USER_ID = crypto.randomUUID();
 const MY_USER_NAME = `Guest ${Math.floor(Math.random() * 1000)}`;
 const MY_CURSOR_COLOR = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'][Math.floor(Math.random() * 5)];
+const USE_SUPABASE = isSupabaseConfigured();
 
 const App: React.FC = () => {
   // --- State ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
-  const [offset, setOffset] = useState<Point>({ x: 0, y: 0 });
+  
+  // Viewport center in BigInt (stored as strings for state)
+  const [viewportCenter, setViewportCenter] = useState<{ x: string; y: string }>({ x: '0', y: '0' });
   const [scale, setScale] = useState(1);
   const [activeTool, setActiveTool] = useState<ToolType>(ToolType.HAND);
   
-  // Selection & Clustering
+  // Selection & Clustering (screen-space for selection box)
   const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
   const [selectionBox, setSelectionBox] = useState<{ start: Point; end: Point } | null>(null);
 
   // Multiplayer
   const [remoteCursors, setRemoteCursors] = useState<Record<string, UserCursor>>({});
+  const [isOnline, setIsOnline] = useState(USE_SUPABASE);
+  const [connectionStatus, setConnectionStatus] = useState<'connecting' | 'connected' | 'offline'>('connecting');
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
   
   // UX State
-  const [isSimulating, setIsSimulating] = useState(false); // Bot mode
+  const [isSimulating, setIsSimulating] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   
@@ -38,24 +60,46 @@ const App: React.FC = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
+  const movedNotesDelta = useRef<{ ids: string[], dx: bigint, dy: bigint } | null>(null);
+  const updateTimers = useRef<Record<string, NodeJS.Timeout>>({});
+  const activelyEditingNotes = useRef<Set<string>>(new Set());
 
-  // --- Helpers ---
-  const screenToWorld = useCallback((sx: number, sy: number) => {
+  // --- BigInt Helpers ---
+  const centerBig = parseBigPoint(viewportCenter.x, viewportCenter.y);
+
+  // Convert screen position to world coordinates (returns BigInt strings)
+  const screenToWorld = useCallback((screenX: number, screenY: number): { x: string; y: string } => {
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    const relativeX = Math.round((screenX - screenCenterX) / scale);
+    const relativeY = Math.round((screenY - screenCenterY) / scale);
     return {
-      x: (sx / scale) - offset.x,
-      y: (sy / scale) - offset.y,
+      x: (centerBig.x + BigInt(relativeX)).toString(),
+      y: (centerBig.y + BigInt(relativeY)).toString(),
     };
-  }, [offset, scale]);
+  }, [centerBig, scale]);
+
+  // Convert world position to screen position
+  const worldToScreen = useCallback((worldX: string, worldY: string): Point => {
+    const worldBig = parseBigPoint(worldX, worldY);
+    const relative = getRelativeOffset(worldBig, centerBig);
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    return {
+      x: screenCenterX + relative.x * scale,
+      y: screenCenterY + relative.y * scale,
+    };
+  }, [centerBig, scale]);
 
   const broadcast = (type: string, payload: any) => {
     broadcastChannelRef.current?.postMessage({ type, payload, senderId: MY_USER_ID });
   };
 
-  const createNote = useCallback((x: number, y: number, content: string = '', aiGenerated: boolean = false) => {
+  const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false) => {
     const newNote: Note = {
       id: crypto.randomUUID(),
-      x,
-      y,
+      x: worldX,
+      y: worldY,
       text: content,
       color: NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
       createdAt: Date.now(),
@@ -64,38 +108,149 @@ const App: React.FC = () => {
     };
     setNotes(prev => [...prev, newNote]);
     broadcast('NOTE_CREATE', newNote);
+    
+    // Save to Supabase if configured
+    if (USE_SUPABASE) {
+      createNoteInDb(newNote);
+    }
 
-    // Auto-select manually created notes so user can type immediately
     if (!aiGenerated) {
-        setSelectedNoteIds(new Set([newNote.id]));
+      setSelectedNoteIds(new Set([newNote.id]));
     }
   }, []);
 
   // --- Effects ---
 
-  // 1. URL Params Handling (Deep Link)
+  // 0. Load data from Supabase (if configured) or localStorage
+  useEffect(() => {
+    const loadData = async () => {
+      if (USE_SUPABASE) {
+        setConnectionStatus('connecting');
+        try {
+          const [dbNotes, dbClusters] = await Promise.all([
+            fetchNotes(),
+            fetchClusters(),
+          ]);
+          setNotes(dbNotes);
+          setClusters(dbClusters);
+          setConnectionStatus('connected');
+          setIsOnline(true);
+        } catch (error) {
+          console.error('Failed to load from Supabase:', error);
+          setConnectionStatus('offline');
+          setIsOnline(false);
+          // Fall back to localStorage
+          loadFromLocalStorage();
+        }
+      } else {
+        setConnectionStatus('offline');
+        loadFromLocalStorage();
+      }
+    };
+
+    const loadFromLocalStorage = () => {
+      try {
+        const savedNotes = localStorage.getItem('infinity-board-notes');
+        const savedClusters = localStorage.getItem('infinity-board-clusters');
+        
+        if (savedNotes) {
+          const parsedNotes: Note[] = JSON.parse(savedNotes);
+          const now = Date.now();
+          const validNotes = parsedNotes.filter(note => now < note.expiresAt);
+          if (validNotes.length > 0) {
+            setNotes(validNotes);
+          }
+        }
+        
+        if (savedClusters) {
+          const parsedClusters: Cluster[] = JSON.parse(savedClusters);
+          setClusters(parsedClusters);
+        }
+      } catch (error) {
+        console.error('Failed to load from localStorage:', error);
+      }
+    };
+
+    loadData();
+  }, []);
+
+  // 1. Persist notes to localStorage (as backup)
+  useEffect(() => {
+    if (!USE_SUPABASE) {
+      try {
+        localStorage.setItem('infinity-board-notes', JSON.stringify(notes));
+      } catch (error) {
+        console.error('Failed to save notes:', error);
+      }
+    }
+  }, [notes]);
+
+  // 2. Persist clusters to localStorage (as backup)
+  useEffect(() => {
+    if (!USE_SUPABASE) {
+      try {
+        localStorage.setItem('infinity-board-clusters', JSON.stringify(clusters));
+      } catch (error) {
+        console.error('Failed to save clusters:', error);
+      }
+    }
+  }, [clusters]);
+
+  // 3. URL Params Handling (Deep Link)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const x = params.get('x');
     const y = params.get('y');
     if (x && y) {
-      const targetX = parseInt(x);
-      const targetY = parseInt(y);
-      if (!isNaN(targetX) && !isNaN(targetY)) {
-        // Center view on target coordinates
-        const viewportW = window.innerWidth;
-        const viewportH = window.innerHeight;
-        // scale is 1 initially
-        setOffset({
-          x: -targetX + viewportW / 2,
-          y: -targetY + viewportH / 2
-        });
+      try {
+        // Validate as BigInt
+        BigInt(x);
+        BigInt(y);
+        setViewportCenter({ x, y });
+      } catch {
+        // Invalid coordinates, ignore
       }
     }
   }, []);
 
-  // 2. Multiplayer Sync
+  // 4. Multiplayer Sync (Supabase Realtime or BroadcastChannel fallback)
   useEffect(() => {
+    // Set up Supabase realtime if configured
+    if (USE_SUPABASE) {
+      supabaseChannelRef.current = subscribeToBoard({
+        onNoteInsert: (note) => {
+          setNotes(prev => {
+            // Avoid duplicates
+            if (prev.some(n => n.id === note.id)) return prev;
+            return [...prev, note];
+          });
+        },
+        onNoteUpdate: (note) => {
+          // Don't apply remote updates to notes the user is actively editing
+          if (activelyEditingNotes.current.has(note.id)) {
+            return;
+          }
+          setNotes(prev => prev.map(n => n.id === note.id ? note : n));
+        },
+        onNoteDelete: (id) => {
+          setNotes(prev => prev.filter(n => n.id !== id));
+        },
+        onClusterInsert: (cluster) => {
+          setClusters(prev => {
+            if (prev.some(c => c.id === cluster.id)) return prev;
+            return [...prev, cluster];
+          });
+        },
+        onClusterUpdate: (cluster) => {
+          setClusters(prev => prev.map(c => c.id === cluster.id ? cluster : c));
+        },
+        onClusterDelete: (id) => {
+          setClusters(prev => prev.filter(c => c.id !== id));
+        },
+      });
+    }
+
+    // Always set up BroadcastChannel for same-browser sync (faster for local tabs)
     broadcastChannelRef.current = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
     
     broadcastChannelRef.current.onmessage = (event) => {
@@ -107,55 +262,78 @@ const App: React.FC = () => {
           setRemoteCursors(prev => ({ ...prev, [senderId]: payload }));
           break;
         case 'NOTE_CREATE':
-          setNotes(prev => [...prev, payload]);
+          // Only update from broadcast if not using Supabase (Supabase handles this)
+          if (!USE_SUPABASE) {
+            setNotes(prev => [...prev, payload]);
+          }
           break;
         case 'NOTE_UPDATE':
-          setNotes(prev => prev.map(n => n.id === payload.id ? { ...n, ...payload } : n));
+          if (!USE_SUPABASE) {
+            // Don't apply broadcast updates to notes the user is actively editing
+            if (activelyEditingNotes.current.has(payload.id)) {
+              break;
+            }
+            setNotes(prev => prev.map(n => n.id === payload.id ? { ...n, ...payload } : n));
+          }
           break;
         case 'NOTE_DELETE':
-          setNotes(prev => prev.filter(n => n.id !== payload));
+          if (!USE_SUPABASE) {
+            setNotes(prev => prev.filter(n => n.id !== payload));
+          }
           break;
         case 'NOTE_MOVE_BATCH': 
-          // Payload: { ids: string[], dx: number, dy: number }
-          setNotes(prev => prev.map(n => 
-             payload.ids.includes(n.id) ? { ...n, x: n.x + payload.dx, y: n.y + payload.dy } : n
-          ));
+          if (!USE_SUPABASE) {
+            setNotes(prev => prev.map(n => {
+              if (payload.ids.includes(n.id)) {
+                const newX = (BigInt(n.x) + BigInt(payload.dx)).toString();
+                const newY = (BigInt(n.y) + BigInt(payload.dy)).toString();
+                return { ...n, x: newX, y: newY };
+              }
+              return n;
+            }));
+          }
           break;
         case 'CLUSTER_CREATE':
+          if (!USE_SUPABASE) {
             setClusters(prev => [...prev, payload]);
-            break;
+          }
+          break;
         case 'CLUSTER_DELETE':
+          if (!USE_SUPABASE) {
             setClusters(prev => prev.filter(c => c.id !== payload));
-            break;
+          }
+          break;
         case 'CLUSTER_UPDATE':
+          if (!USE_SUPABASE) {
             setClusters(prev => prev.map(c => c.id === payload.id ? { ...c, ...payload.updates } : c));
-            break;
+          }
+          break;
       }
     };
 
-    // Cleanup cursors
     const cursorInterval = setInterval(() => {
-        const now = Date.now();
-        setRemoteCursors(prev => {
-            const next = { ...prev };
-            let changed = false;
-            Object.keys(next).forEach(key => {
-                if (now - next[key].lastActive > 5000) {
-                    delete next[key];
-                    changed = true;
-                }
-            });
-            return changed ? next : prev;
+      const now = Date.now();
+      setRemoteCursors(prev => {
+        const next = { ...prev };
+        let changed = false;
+        Object.keys(next).forEach(key => {
+          if (now - next[key].lastActive > 5000) {
+            delete next[key];
+            changed = true;
+          }
         });
+        return changed ? next : prev;
+      });
     }, 1000);
 
     return () => {
-        broadcastChannelRef.current?.close();
-        clearInterval(cursorInterval);
+      unsubscribeFromBoard(supabaseChannelRef.current);
+      broadcastChannelRef.current?.close();
+      clearInterval(cursorInterval);
     };
   }, []);
 
-  // 3. Cleanup expired notes
+  // 5. Cleanup expired notes
   useEffect(() => {
     const checkInterval = setInterval(() => {
       const now = Date.now();
@@ -164,18 +342,18 @@ const App: React.FC = () => {
         let changed = false;
         for (const note of prev) {
           if (now > note.expiresAt) {
-             if (!note.isFalling) {
-                note.isFalling = true;
-                remaining.push(note);
+            if (!note.isFalling) {
+              note.isFalling = true;
+              remaining.push(note);
+              changed = true;
+            } else {
+              if (now > note.expiresAt + 1000) {
                 changed = true;
-             } else {
-                 if (now > note.expiresAt + 1000) {
-                     changed = true;
-                     continue; 
-                 } else {
-                     remaining.push(note);
-                 }
-             }
+                continue;
+              } else {
+                remaining.push(note);
+              }
+            }
           } else {
             remaining.push(note);
           }
@@ -186,497 +364,604 @@ const App: React.FC = () => {
     return () => clearInterval(checkInterval);
   }, []);
 
-  // 4. Bot Simulation
+  // 6. Bot Simulation
   useEffect(() => {
     if (!isSimulating) return;
     const interval = setInterval(() => {
-        const viewportW = window.innerWidth / scale;
-        const viewportH = window.innerHeight / scale;
-        const centerX = -offset.x + viewportW / 2;
-        const centerY = -offset.y + viewportH / 2;
-        const rX = centerX + (Math.random() * 800 - 400);
-        const rY = centerY + (Math.random() * 600 - 300);
-        const dummyTexts = ["Idea A", "Review", "Deploy", "Docs", "Refactor", "Test"];
-        createNote(rX, rY, dummyTexts[Math.floor(Math.random() * dummyTexts.length)]);
+      // Create note near viewport center
+      const offsetX = Math.round(Math.random() * 800 - 400);
+      const offsetY = Math.round(Math.random() * 600 - 300);
+      const noteX = (centerBig.x + BigInt(offsetX)).toString();
+      const noteY = (centerBig.y + BigInt(offsetY)).toString();
+      const dummyTexts = ["Idea A", "Review", "Deploy", "Docs", "Refactor", "Test"];
+      createNote(noteX, noteY, dummyTexts[Math.floor(Math.random() * dummyTexts.length)], true);
     }, 2000);
     return () => clearInterval(interval);
-  }, [isSimulating, createNote, offset, scale]);
+  }, [isSimulating, createNote, centerBig]);
 
   // --- Logic: Clustering ---
 
   const handleCreateCluster = async () => {
-      if (selectedNoteIds.size < 2) return;
-      
-      setIsProcessingAI(true);
-      const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
-      
-      // Calculate Bounds
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      selectedNotes.forEach(n => {
-          minX = Math.min(minX, n.x);
-          minY = Math.min(minY, n.y);
-          maxX = Math.max(maxX, n.x + 200); // 200 is note width
-          maxY = Math.max(maxY, n.y + 200);
-      });
+    if (selectedNoteIds.size < 2) return;
+    
+    setIsProcessingAI(true);
+    const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
+    
+    // Calculate bounds using BigInt
+    let minX = BigInt(selectedNotes[0].x);
+    let minY = BigInt(selectedNotes[0].y);
+    let maxX = BigInt(selectedNotes[0].x) + 200n;
+    let maxY = BigInt(selectedNotes[0].y) + 200n;
+    
+    selectedNotes.forEach(n => {
+      const nx = BigInt(n.x);
+      const ny = BigInt(n.y);
+      if (nx < minX) minX = nx;
+      if (ny < minY) minY = ny;
+      if (nx + 200n > maxX) maxX = nx + 200n;
+      if (ny + 200n > maxY) maxY = ny + 200n;
+    });
 
-      // Add padding
-      const padding = 40;
-      minX -= padding; minY -= padding * 2; maxX += padding; maxY += padding;
+    // Add padding
+    const padding = 40n;
+    minX -= padding;
+    minY -= padding * 2n;
+    maxX += padding;
+    maxY += padding;
 
-      // Get Title
-      const noteTexts = selectedNotes.map(n => n.text).filter(t => t.length > 0);
-      const title = await generateClusterTitle(noteTexts);
+    const noteTexts = selectedNotes.map(n => n.text).filter(t => t.length > 0);
+    const title = await generateClusterTitle(noteTexts);
 
-      const newCluster: Cluster = {
-          id: crypto.randomUUID(),
-          title: title,
-          x: minX,
-          y: minY,
-          width: maxX - minX,
-          height: maxY - minY,
-          color: CLUSTER_PRESETS[0].class
-      };
+    const newCluster: Cluster = {
+      id: crypto.randomUUID(),
+      title: title,
+      x: minX.toString(),
+      y: minY.toString(),
+      width: Number(maxX - minX),
+      height: Number(maxY - minY),
+      color: CLUSTER_PRESETS[0].class
+    };
 
-      setClusters(prev => [...prev, newCluster]);
-      broadcast('CLUSTER_CREATE', newCluster);
-      setIsProcessingAI(false);
-      setSelectedNoteIds(new Set()); // Deselect after grouping
+    setClusters(prev => [...prev, newCluster]);
+    broadcast('CLUSTER_CREATE', newCluster);
+    if (USE_SUPABASE) {
+      createClusterInDb(newCluster);
+    }
+    setIsProcessingAI(false);
+    setSelectedNoteIds(new Set());
   };
 
   const handleUngroup = () => {
-      const selectedArr = Array.from(selectedNoteIds);
-      if (selectedArr.length === 0) return;
+    if (selectedNoteIds.size === 0) return;
 
-      const clustersToRemove = new Set<string>();
-      
-      const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
-      
-      clusters.forEach(c => {
-          const hasNote = selectedNotes.some(n => 
-              n.x > c.x && n.x < c.x + c.width &&
-              n.y > c.y && n.y < c.y + c.height
-          );
-          if (hasNote) clustersToRemove.add(c.id);
+    const clustersToRemove = new Set<string>();
+    const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
+    
+    clusters.forEach(c => {
+      const cx = BigInt(c.x);
+      const cy = BigInt(c.y);
+      const hasNote = selectedNotes.some(n => {
+        const nx = BigInt(n.x);
+        const ny = BigInt(n.y);
+        return nx > cx && nx < cx + BigInt(c.width) &&
+               ny > cy && ny < cy + BigInt(c.height);
       });
+      if (hasNote) clustersToRemove.add(c.id);
+    });
 
-      clustersToRemove.forEach(cid => {
-          broadcast('CLUSTER_DELETE', cid);
-      });
-      setClusters(prev => prev.filter(c => !clustersToRemove.has(c.id)));
+    clustersToRemove.forEach(cid => {
+      broadcast('CLUSTER_DELETE', cid);
+      if (USE_SUPABASE) {
+        deleteClusterFromDb(cid);
+      }
+    });
+    setClusters(prev => prev.filter(c => !clustersToRemove.has(c.id)));
   };
 
   const handleClusterUpdate = (id: string, updates: Partial<Cluster>) => {
-      setClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
-      broadcast('CLUSTER_UPDATE', { id, updates });
+    setClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+    broadcast('CLUSTER_UPDATE', { id, updates });
+    if (USE_SUPABASE) {
+      updateClusterInDb(id, updates);
+    }
   };
 
   // --- Handlers ---
 
   const handleShare = (id: string) => {
-      const note = notes.find(n => n.id === id);
-      if (!note) return;
-      
-      const url = new URL(window.location.href);
-      url.searchParams.set('x', Math.round(note.x).toString());
-      url.searchParams.set('y', Math.round(note.y).toString());
-      
-      navigator.clipboard.writeText(url.toString()).then(() => {
-          setToast("Link with coordinates copied to clipboard!");
-          setTimeout(() => setToast(null), 3000);
-      });
+    const note = notes.find(n => n.id === id);
+    if (!note) return;
+    
+    // Share the CENTER of the note (not top-left corner) so it appears centered on screen
+    const centerX = (BigInt(note.x) + 100n).toString(); // 100 = half of 200px note width
+    const centerY = (BigInt(note.y) + 100n).toString(); // 100 = half of 200px note height
+    
+    const url = new URL(window.location.href);
+    url.searchParams.set('x', centerX);
+    url.searchParams.set('y', centerY);
+    
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setToast("Link with coordinates copied to clipboard!");
+      setTimeout(() => setToast(null), 3000);
+    });
   };
 
-  // Smart Zoom Handler
   const handleZoomBtn = (delta: number) => {
     const viewportW = window.innerWidth;
     const viewportH = window.innerHeight;
     
-    let targetWorldX, targetWorldY;
+    let targetWorldX: bigint, targetWorldY: bigint;
     
-    // 1. Determine Target Center (Selection or Screen Center)
     if (selectedNoteIds.size > 0) {
-        // Find center of selection
-        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-        let found = false;
-        notes.forEach(n => {
-            if (selectedNoteIds.has(n.id)) {
-                minX = Math.min(minX, n.x);
-                maxX = Math.max(maxX, n.x + 200);
-                minY = Math.min(minY, n.y);
-                maxY = Math.max(maxY, n.y + 200);
-                found = true;
-            }
+      // Find center of selection
+      const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
+      if (selectedNotes.length > 0) {
+        let minX = BigInt(selectedNotes[0].x);
+        let maxX = BigInt(selectedNotes[0].x) + 200n;
+        let minY = BigInt(selectedNotes[0].y);
+        let maxY = BigInt(selectedNotes[0].y) + 200n;
+        
+        selectedNotes.forEach(n => {
+          const nx = BigInt(n.x);
+          const ny = BigInt(n.y);
+          if (nx < minX) minX = nx;
+          if (nx + 200n > maxX) maxX = nx + 200n;
+          if (ny < minY) minY = ny;
+          if (ny + 200n > maxY) maxY = ny + 200n;
         });
-        if (found) {
-            targetWorldX = (minX + maxX) / 2;
-            targetWorldY = (minY + maxY) / 2;
-        } else {
-             // Fallback to screen center
-             targetWorldX = -offset.x + (viewportW/2)/scale;
-             targetWorldY = -offset.y + (viewportH/2)/scale;
-        }
+        
+        targetWorldX = (minX + maxX) / 2n;
+        targetWorldY = (minY + maxY) / 2n;
+      } else {
+        targetWorldX = centerBig.x;
+        targetWorldY = centerBig.y;
+      }
     } else {
-        // Screen center
-        targetWorldX = -offset.x + (viewportW/2)/scale;
-        targetWorldY = -offset.y + (viewportH/2)/scale;
+      targetWorldX = centerBig.x;
+      targetWorldY = centerBig.y;
     }
     
-    // 2. Calculate New Scale
     const newScale = Math.min(Math.max(0.1, scale + delta), 5);
     
-    // 3. Adjust Offset to keep Target at Screen Center
-    // screenCenterX = (targetWorldX + newOffsetX) * newScale
-    // newOffsetX = (screenCenterX / newScale) - targetWorldX
-    const newOffsetX = ((viewportW / 2) / newScale) - targetWorldX;
-    const newOffsetY = ((viewportH / 2) / newScale) - targetWorldY;
-    
+    // Keep viewport centered on target
     setScale(newScale);
-    setOffset({ x: newOffsetX, y: newOffsetY });
+    setViewportCenter({ x: targetWorldX.toString(), y: targetWorldY.toString() });
   };
 
   const handleWheel = (e: React.WheelEvent) => {
     if (e.ctrlKey || e.metaKey) {
-        const zoomSensitivity = 0.001;
-        const delta = -e.deltaY * zoomSensitivity;
-        // Basic mouse wheel zoom (not anchored to mouse yet for simplicity in this specific update)
-        setScale(s => Math.min(Math.max(0.1, s + delta), 5));
+      const zoomSensitivity = 0.001;
+      const delta = -e.deltaY * zoomSensitivity;
+      setScale(s => Math.min(Math.max(0.1, s + delta), 5));
     } else {
-        setOffset(prev => ({
-            x: prev.x - e.deltaX / scale,
-            y: prev.y - e.deltaY / scale
-        }));
+      // Pan: move viewport center in opposite direction of scroll
+      const dx = Math.round(e.deltaX / scale);
+      const dy = Math.round(e.deltaY / scale);
+      setViewportCenter(prev => ({
+        x: (BigInt(prev.x) + BigInt(dx)).toString(),
+        y: (BigInt(prev.y) + BigInt(dy)).toString(),
+      }));
     }
   };
 
   const handleMouseDown = (e: React.MouseEvent) => {
     if (activeTool === ToolType.HAND) {
-        setIsDragging(true);
-        setDragStart({ x: e.clientX, y: e.clientY });
+      setIsDragging(true);
+      setDragStart({ x: e.clientX, y: e.clientY });
     } else if (activeTool === ToolType.NOTE) {
-        const worldPos = screenToWorld(e.clientX, e.clientY);
-        createNote(worldPos.x - 100, worldPos.y - 100);
+      const worldPos = screenToWorld(e.clientX, e.clientY);
+      // Offset by half note size
+      const noteX = (BigInt(worldPos.x) - 100n).toString();
+      const noteY = (BigInt(worldPos.y) - 100n).toString();
+      createNote(noteX, noteY);
     } else if (activeTool === ToolType.SELECT) {
-        if (e.target === e.currentTarget) {
-            // Clicked on empty canvas -> Start selection box
-            setIsDragging(true);
-            const worldPos = screenToWorld(e.clientX, e.clientY);
-            setDragStart(worldPos);
-            setSelectionBox({ start: worldPos, end: worldPos });
-            
-            // Clear selection if not holding shift
-            if (!e.shiftKey) {
-                setSelectedNoteIds(new Set());
-            }
+      if (e.target === e.currentTarget) {
+        setIsDragging(true);
+        // Selection box uses screen coordinates for simplicity
+        setDragStart({ x: e.clientX, y: e.clientY });
+        setSelectionBox({ start: { x: e.clientX, y: e.clientY }, end: { x: e.clientX, y: e.clientY } });
+        
+        if (!e.shiftKey) {
+          setSelectedNoteIds(new Set());
         }
+      }
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     const worldPos = screenToWorld(e.clientX, e.clientY);
     
-    // Broadcast Cursor
-    // Throttle slightly
-    if (Math.random() > 0.5) { 
-        broadcast('CURSOR', {
-            id: MY_USER_ID,
-            name: MY_USER_NAME,
-            x: worldPos.x,
-            y: worldPos.y,
-            color: MY_CURSOR_COLOR,
-            lastActive: Date.now()
-        });
+    // Broadcast Cursor (throttled)
+    if (Math.random() > 0.5) {
+      broadcast('CURSOR', {
+        id: MY_USER_ID,
+        name: MY_USER_NAME,
+        x: worldPos.x,
+        y: worldPos.y,
+        color: MY_CURSOR_COLOR,
+        lastActive: Date.now()
+      });
     }
 
     if (isDragging) {
-        if (activeTool === ToolType.HAND) {
-             const dx = (e.clientX - dragStart.x) / scale;
-             const dy = (e.clientY - dragStart.y) / scale;
-             setOffset(prev => ({ x: prev.x + dx, y: prev.y + dy }));
-             setDragStart({ x: e.clientX, y: e.clientY });
-        } 
-        else if (activeTool === ToolType.SELECT) {
-             if (selectionBox) {
-                 // Update Selection Box
-                 setSelectionBox({ start: dragStart, end: worldPos });
-             } 
-        }
+      if (activeTool === ToolType.HAND) {
+        const dx = Math.round((e.clientX - dragStart.x) / scale);
+        const dy = Math.round((e.clientY - dragStart.y) / scale);
+        // Move viewport center in opposite direction
+        setViewportCenter(prev => ({
+          x: (BigInt(prev.x) - BigInt(dx)).toString(),
+          y: (BigInt(prev.y) - BigInt(dy)).toString(),
+        }));
+        setDragStart({ x: e.clientX, y: e.clientY });
+      } else if (activeTool === ToolType.SELECT && selectionBox) {
+        setSelectionBox({ start: dragStart, end: { x: e.clientX, y: e.clientY } });
+      }
     }
   };
   
-  // Re-implementing dragging specifically for notes to be smoother
-  const lastMousePos = useRef<Point | null>(null);
+  // Note dragging state
+  const lastMousePos = useRef<{ x: string; y: string } | null>(null);
 
-  const onGlobalMouseMove = (e: MouseEvent) => {
-      const currentWorld = screenToWorld(e.clientX, e.clientY);
+  const onGlobalMouseMove = useCallback((e: MouseEvent) => {
+    const currentWorld = screenToWorld(e.clientX, e.clientY);
+    
+    // Update Selection Box Visual
+    if (isDragging && selectionBox) {
+      setSelectionBox(prev => prev ? { start: prev.start, end: { x: e.clientX, y: e.clientY } } : null);
+    }
+
+    // Move Selected Notes
+    if (isDragging && !selectionBox && selectedNoteIds.size > 0 && lastMousePos.current) {
+      const dx = BigInt(currentWorld.x) - BigInt(lastMousePos.current.x);
+      const dy = BigInt(currentWorld.y) - BigInt(lastMousePos.current.y);
       
-      // Update Selection Box Visual
-      if (isDragging && selectionBox) {
-          setSelectionBox({ start: selectionBox.start, end: currentWorld });
-      }
-
-      // Move Selected Notes
-      if (isDragging && !selectionBox && selectedNoteIds.size > 0 && lastMousePos.current) {
-          const dx = currentWorld.x - lastMousePos.current.x;
-          const dy = currentWorld.y - lastMousePos.current.y;
-          
-          if (dx !== 0 || dy !== 0) {
-              setNotes(prev => prev.map(n => 
-                 selectedNoteIds.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n
-              ));
-              
-              // Broadcast movement
-              broadcast('NOTE_MOVE_BATCH', { ids: Array.from(selectedNoteIds), dx, dy });
+      if (dx !== 0n || dy !== 0n) {
+        setNotes(prev => prev.map(n => {
+          if (selectedNoteIds.has(n.id)) {
+            return {
+              ...n,
+              x: (BigInt(n.x) + dx).toString(),
+              y: (BigInt(n.y) + dy).toString(),
+            };
           }
+          return n;
+        }));
+        
+        broadcast('NOTE_MOVE_BATCH', { 
+          ids: Array.from(selectedNoteIds), 
+          dx: dx.toString(), 
+          dy: dy.toString() 
+        });
+        
+        // Track total delta for Supabase sync on mouseUp
+        if (USE_SUPABASE) {
+          const ids = Array.from(selectedNoteIds);
+          if (!movedNotesDelta.current) {
+            movedNotesDelta.current = { ids, dx, dy };
+          } else {
+            movedNotesDelta.current.dx += dx;
+            movedNotesDelta.current.dy += dy;
+          }
+        }
       }
-      lastMousePos.current = currentWorld;
-  };
+    }
+    lastMousePos.current = currentWorld;
+  }, [isDragging, selectionBox, selectedNoteIds, screenToWorld]);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     // Finalize Selection Box
     if (activeTool === ToolType.SELECT && selectionBox) {
-        // Calculate Intersection
-        const x1 = Math.min(selectionBox.start.x, selectionBox.end.x);
-        const y1 = Math.min(selectionBox.start.y, selectionBox.end.y);
-        const x2 = Math.max(selectionBox.start.x, selectionBox.end.x);
-        const y2 = Math.max(selectionBox.start.y, selectionBox.end.y);
+      const x1 = Math.min(selectionBox.start.x, selectionBox.end.x);
+      const y1 = Math.min(selectionBox.start.y, selectionBox.end.y);
+      const x2 = Math.max(selectionBox.start.x, selectionBox.end.x);
+      const y2 = Math.max(selectionBox.start.y, selectionBox.end.y);
 
-        const newSelection = new Set(selectedNoteIds);
-        notes.forEach(n => {
-            // Note center
-            const cx = n.x + 100; // 200w
-            const cy = n.y + 100; // 200h
-            if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) {
-                newSelection.add(n.id);
-            }
-        });
-        setSelectedNoteIds(newSelection);
-        setSelectionBox(null);
+      const newSelection = new Set(selectedNoteIds);
+      notes.forEach(n => {
+        // Get note center in screen space
+        const screenPos = worldToScreen(n.x, n.y);
+        const cx = screenPos.x + 100 * scale;
+        const cy = screenPos.y + 100 * scale;
+        if (cx >= x1 && cx <= x2 && cy >= y1 && cy <= y2) {
+          newSelection.add(n.id);
+        }
+      });
+      setSelectedNoteIds(newSelection);
+      setSelectionBox(null);
+    }
+
+    // Sync moved notes to Supabase
+    if (USE_SUPABASE && movedNotesDelta.current) {
+      const { ids, dx, dy } = movedNotesDelta.current;
+      moveNotesInDb(ids, dx.toString(), dy.toString());
+      movedNotesDelta.current = null;
     }
 
     setIsDragging(false);
     lastMousePos.current = null;
-  };
+  }, [activeTool, selectionBox, selectedNoteIds, notes, worldToScreen, scale]);
 
   useEffect(() => {
-      window.addEventListener('mouseup', handleMouseUp);
-      window.addEventListener('mousemove', onGlobalMouseMove);
-      return () => {
-          window.removeEventListener('mouseup', handleMouseUp);
-          window.removeEventListener('mousemove', onGlobalMouseMove);
-      }
-  });
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('mousemove', onGlobalMouseMove);
+    return () => {
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('mousemove', onGlobalMouseMove);
+    };
+  }, [handleMouseUp, onGlobalMouseMove]);
 
   const onNoteMouseDown = (e: React.MouseEvent, id: string) => {
-      if (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) {
-          e.stopPropagation();
-          
-          const isTextArea = (e.target as HTMLElement).tagName.toLowerCase() === 'textarea';
-          
-          if (!isTextArea) {
-             setIsDragging(true);
-             lastMousePos.current = screenToWorld(e.clientX, e.clientY);
-          }
-
-          if (e.shiftKey) {
-              const newSet = new Set(selectedNoteIds);
-              if (newSet.has(id)) newSet.delete(id);
-              else newSet.add(id);
-              setSelectedNoteIds(newSet);
-          } else {
-              if (!selectedNoteIds.has(id)) {
-                  setSelectedNoteIds(new Set([id]));
-              }
-          }
+    if (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) {
+      e.stopPropagation();
+      
+      const isTextArea = (e.target as HTMLElement).tagName.toLowerCase() === 'textarea';
+      
+      if (!isTextArea) {
+        setIsDragging(true);
+        lastMousePos.current = screenToWorld(e.clientX, e.clientY);
       }
+
+      if (e.shiftKey) {
+        const newSet = new Set(selectedNoteIds);
+        if (newSet.has(id)) newSet.delete(id);
+        else newSet.add(id);
+        setSelectedNoteIds(newSet);
+      } else {
+        if (!selectedNoteIds.has(id)) {
+          setSelectedNoteIds(new Set([id]));
+        }
+      }
+    }
   };
 
   const handleNoteUpdate = (id: string, newText: string) => {
-      setNotes(prev => {
-          const next = prev.map(n => n.id === id ? { ...n, text: newText } : n);
-          return next;
-      });
-      broadcast('NOTE_UPDATE', { id, text: newText });
+    // Mark this note as actively being edited
+    activelyEditingNotes.current.add(id);
+    
+    // Update local state immediately (smooth typing)
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, text: newText } : n));
+    broadcast('NOTE_UPDATE', { id, text: newText });
+    
+    // Debounce Supabase updates (wait 500ms after typing stops)
+    if (USE_SUPABASE) {
+      if (updateTimers.current[id]) {
+        clearTimeout(updateTimers.current[id]);
+      }
+      updateTimers.current[id] = setTimeout(() => {
+        updateNoteInDb(id, { text: newText });
+        delete updateTimers.current[id];
+        // Remove from actively editing after save completes
+        activelyEditingNotes.current.delete(id);
+      }, 500);
+    }
   };
 
   const handleNoteDelete = (id: string) => {
-      setNotes(prev => prev.filter(n => n.id !== id));
-      broadcast('NOTE_DELETE', id);
+    setNotes(prev => prev.filter(n => n.id !== id));
+    broadcast('NOTE_DELETE', id);
+    if (USE_SUPABASE) {
+      deleteNoteFromDb(id);
+    }
   };
 
   const handleGeminiExpand = async (id: string, text: string) => {
-      if (!text || text.length < 3) return;
-      setIsProcessingAI(true);
-      const parentNote = notes.find(n => n.id === id);
-      if(!parentNote) return;
+    if (!text || text.length < 3) return;
+    setIsProcessingAI(true);
+    const parentNote = notes.find(n => n.id === id);
+    if (!parentNote) return;
 
-      const ideas = await brainstormNotes(text);
-      ideas.forEach((idea, index) => {
-         const angle = (index / ideas.length) * Math.PI * 2;
-         const distance = 250;
-         const nx = parentNote.x + Math.cos(angle) * distance;
-         const ny = parentNote.y + Math.sin(angle) * distance;
-         createNote(nx, ny, idea, true);
-      });
-      setIsProcessingAI(false);
+    const ideas = await brainstormNotes(text);
+    const parentX = BigInt(parentNote.x);
+    const parentY = BigInt(parentNote.y);
+    
+    ideas.forEach((idea, index) => {
+      const angle = (index / ideas.length) * Math.PI * 2;
+      const distance = 250;
+      const nx = (parentX + BigInt(Math.round(Math.cos(angle) * distance))).toString();
+      const ny = (parentY + BigInt(Math.round(Math.sin(angle) * distance))).toString();
+      createNote(nx, ny, idea, true);
+    });
+    setIsProcessingAI(false);
   };
+
+  // Calculate background grid offset based on viewport center
+  const gridOffsetX = -Number(centerBig.x % 1000n) * scale;
+  const gridOffsetY = -Number(centerBig.y % 1000n) * scale;
 
   return (
     <div 
-        ref={containerRef}
-        className={`w-screen h-screen overflow-hidden relative dot-grid ${activeTool === ToolType.HAND ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
-        onWheel={handleWheel}
-        onMouseDown={handleMouseDown}
-        onMouseMove={handleMouseMove}
-        // IMPORTANT: We do NOT use a transform on a container div anymore. 
-        // Background grid position
-        style={{
-            backgroundPosition: `${offset.x * scale}px ${offset.y * scale}px`,
-            backgroundSize: `${40 * scale}px ${40 * scale}px`
-        }}
+      ref={containerRef}
+      className={`w-screen h-screen overflow-hidden relative dot-grid ${activeTool === ToolType.HAND ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
+      onWheel={handleWheel}
+      onMouseDown={handleMouseDown}
+      onMouseMove={handleMouseMove}
+      style={{
+        backgroundPosition: `${gridOffsetX}px ${gridOffsetY}px`,
+        backgroundSize: `${40 * scale}px ${40 * scale}px`
+      }}
     >
-       {/* All content is now absolute positioned relative to screen */}
-       
-         {/* Render Clusters */}
-         {clusters.map(cluster => (
-             <ClusterGroup 
-                key={cluster.id}
-                cluster={cluster}
-                offset={offset}
-                scale={scale}
-                onUpdate={handleClusterUpdate}
-             />
-         ))}
+      {/* Render Clusters */}
+      {clusters.map(cluster => {
+        const screenPos = worldToScreen(cluster.x, cluster.y);
+        // Culling: skip if too far off screen
+        if (screenPos.x < -2000 || screenPos.x > window.innerWidth + 2000 ||
+            screenPos.y < -2000 || screenPos.y > window.innerHeight + 2000) {
+          return null;
+        }
+        return (
+          <ClusterGroup 
+            key={cluster.id}
+            cluster={cluster}
+            screenX={screenPos.x}
+            screenY={screenPos.y}
+            scale={scale}
+            onUpdate={handleClusterUpdate}
+          />
+        );
+      })}
 
-         {/* Render Notes */}
-         {notes.map(note => (
-             <StickyNote 
-                key={note.id} 
-                note={note} 
-                scale={scale} 
-                offset={offset}
-                tool={activeTool}
-                selected={selectedNoteIds.has(note.id)}
-                onUpdate={handleNoteUpdate}
-                onDelete={handleNoteDelete}
-                onMouseDown={onNoteMouseDown}
-                onAIExpand={handleGeminiExpand}
-                onShare={handleShare}
-             />
-         ))}
+      {/* Render Notes */}
+      {notes.map(note => {
+        const screenPos = worldToScreen(note.x, note.y);
+        // Culling: skip if too far off screen
+        if (screenPos.x < -500 || screenPos.x > window.innerWidth + 500 ||
+            screenPos.y < -500 || screenPos.y > window.innerHeight + 500) {
+          return null;
+        }
+        return (
+          <StickyNote 
+            key={note.id} 
+            note={note}
+            screenX={screenPos.x}
+            screenY={screenPos.y}
+            scale={scale}
+            tool={activeTool}
+            selected={selectedNoteIds.has(note.id)}
+            onUpdate={handleNoteUpdate}
+            onDelete={handleNoteDelete}
+            onMouseDown={onNoteMouseDown}
+            onAIExpand={handleGeminiExpand}
+            onShare={handleShare}
+          />
+        );
+      })}
 
-         {/* Render Selection Box */}
-         {selectionBox && (
-             <div 
-                className="absolute border-2 border-blue-400 bg-blue-200/20 z-50 pointer-events-none"
-                style={{
-                    left: (Math.min(selectionBox.start.x, selectionBox.end.x) + offset.x) * scale,
-                    top: (Math.min(selectionBox.start.y, selectionBox.end.y) + offset.y) * scale,
-                    width: Math.abs(selectionBox.end.x - selectionBox.start.x) * scale,
-                    height: Math.abs(selectionBox.end.y - selectionBox.start.y) * scale,
-                }}
-             />
-         )}
+      {/* Render Selection Box (screen space) */}
+      {selectionBox && (
+        <div 
+          className="absolute border-2 border-blue-400 bg-blue-200/20 z-50 pointer-events-none"
+          style={{
+            left: Math.min(selectionBox.start.x, selectionBox.end.x),
+            top: Math.min(selectionBox.start.y, selectionBox.end.y),
+            width: Math.abs(selectionBox.end.x - selectionBox.start.x),
+            height: Math.abs(selectionBox.end.y - selectionBox.start.y),
+          }}
+        />
+      )}
 
-         {/* Render Remote Cursors */}
-         {Object.values(remoteCursors).map(cursor => (
-             <div 
-                key={cursor.id}
-                className="absolute pointer-events-none z-[100] flex flex-col items-start transition-all duration-100 ease-linear"
-                style={{
-                    left: (cursor.x + offset.x) * scale,
-                    top: (cursor.y + offset.y) * scale
-                }}
-             >
-                 <MousePointer2 
-                    size={20} 
-                    fill={cursor.color} 
-                    color="white" 
-                    className="drop-shadow-md"
-                    style={{ transform: `scale(${1/Math.max(0.5, scale)})` }} // Keep cursor size relatively consistent
-                 />
-                 <span 
-                    className="ml-4 -mt-2 text-xs font-medium px-2 py-0.5 rounded text-white shadow-sm whitespace-nowrap"
-                    style={{ backgroundColor: cursor.color, transform: `scale(${1/Math.max(0.5, scale)})`, transformOrigin: 'top left' }}
-                 >
-                     {cursor.name}
-                 </span>
-             </div>
-         ))}
-
+      {/* Render Remote Cursors */}
+      {(Object.entries(remoteCursors) as [string, UserCursor][]).map(([id, cursor]) => {
+        const screenPos = worldToScreen(cursor.x, cursor.y);
+        return (
+          <div 
+            key={id}
+            className="absolute pointer-events-none z-[100] flex flex-col items-start transition-all duration-100 ease-linear"
+            style={{
+              left: screenPos.x,
+              top: screenPos.y
+            }}
+          >
+            <MousePointer2 
+              size={20} 
+              fill={cursor.color} 
+              color="white" 
+              className="drop-shadow-md"
+              style={{ transform: `scale(${1/Math.max(0.5, scale)})` }}
+            />
+            <span 
+              className="ml-4 -mt-2 text-xs font-medium px-2 py-0.5 rounded text-white shadow-sm whitespace-nowrap"
+              style={{ backgroundColor: cursor.color, transform: `scale(${1/Math.max(0.5, scale)})`, transformOrigin: 'top left' }}
+            >
+              {cursor.name}
+            </span>
+          </div>
+        );
+      })}
 
       {/* UI Overlay Layer */}
       <Toolbar 
         activeTool={activeTool} 
         onSelectTool={setActiveTool} 
-        onReset={() => { setOffset({x:0, y:0}); setScale(1); }}
+        onReset={() => { setViewportCenter({ x: '0', y: '0' }); setScale(1); }}
         toggleSimulation={() => setIsSimulating(!isSimulating)}
         isSimulating={isSimulating}
         noteCount={notes.length}
       />
 
       <Minimap 
-        offset={offset} 
+        centerX={viewportCenter.x}
+        centerY={viewportCenter.y}
         scale={scale} 
         onMoveTo={(x, y) => {
-            // x, y are destination World Coordinates.
-            // Center the view on x,y
-            const viewportW = window.innerWidth / scale;
-            const viewportH = window.innerHeight / scale;
-            setOffset({ x: -x + viewportW/2, y: -y + viewportH/2 });
+          setViewportCenter({ x, y });
         }}
         onZoom={handleZoomBtn}
       />
 
       {/* Floating Context Menu for Selection */}
       {selectedNoteIds.size > 0 && (
-          <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white rounded-xl shadow-xl border border-gray-200 p-2 z-50 animate-in fade-in slide-in-from-bottom-4">
-              <span className="text-xs font-semibold text-gray-500 px-2">{selectedNoteIds.size} Selected</span>
-              <div className="h-4 w-px bg-gray-200 mx-1" />
-              
-              <button 
-                onClick={handleCreateCluster}
-                disabled={selectedNoteIds.size < 2 || isProcessingAI}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-blue-50 text-blue-600 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                  {isProcessingAI ? <Loader2 className="animate-spin" size={14}/> : <BoxSelect size={14} />}
-                  Group & Label
-              </button>
-              
-              <button 
-                 onClick={handleUngroup}
-                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 text-red-600 font-medium text-sm transition-colors"
-                 title="Ungroup overlapping clusters"
-              >
-                  <Ungroup size={14} />
-                  Ungroup
-              </button>
-          </div>
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white rounded-xl shadow-xl border border-gray-200 p-2 z-50 animate-in fade-in slide-in-from-bottom-4">
+          <span className="text-xs font-semibold text-gray-500 px-2">{selectedNoteIds.size} Selected</span>
+          <div className="h-4 w-px bg-gray-200 mx-1" />
+          
+          <button 
+            onClick={handleCreateCluster}
+            disabled={selectedNoteIds.size < 2 || isProcessingAI}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-blue-50 text-blue-600 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isProcessingAI ? <Loader2 className="animate-spin" size={14}/> : <BoxSelect size={14} />}
+            Group & Label
+          </button>
+          
+          <button 
+            onClick={handleUngroup}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 text-red-600 font-medium text-sm transition-colors"
+            title="Ungroup overlapping clusters"
+          >
+            <Ungroup size={14} />
+            Ungroup
+          </button>
+        </div>
       )}
 
       {/* Toast Notification */}
       {toast && (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-4 py-2 rounded-full shadow-lg z-[100] text-sm animate-in fade-in slide-in-from-bottom-2">
-              {toast}
-          </div>
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-gray-900/90 text-white px-4 py-2 rounded-full shadow-lg z-[100] text-sm animate-in fade-in slide-in-from-bottom-2">
+          {toast}
+        </div>
       )}
 
       {/* AI Loading Indicator */}
       {isProcessingAI && (
         <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-purple-200 flex items-center gap-2 z-50 text-purple-700 animate-pulse">
-            <Loader2 className="animate-spin" size={16} />
-            <span className="text-sm font-medium">Gemini is thinking...</span>
+          <Loader2 className="animate-spin" size={16} />
+          <span className="text-sm font-medium">Gemini is thinking...</span>
         </div>
       )}
+
+      {/* Connection Status */}
+      <div className="fixed top-6 left-6 flex items-center gap-2 bg-white/80 backdrop-blur border border-gray-200 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
+        {connectionStatus === 'connected' ? (
+          <>
+            <Wifi className="text-green-500" size={16} />
+            <span className="text-green-700 font-medium">Online</span>
+          </>
+        ) : connectionStatus === 'connecting' ? (
+          <>
+            <Loader2 className="text-blue-500 animate-spin" size={16} />
+            <span className="text-blue-700 font-medium">Connecting...</span>
+          </>
+        ) : (
+          <>
+            <WifiOff className="text-gray-400" size={16} />
+            <span className="text-gray-600 font-medium">Local Mode</span>
+          </>
+        )}
+      </div>
 
       {/* Info Toast */}
       <div className="fixed top-6 right-6 max-w-xs bg-white/80 backdrop-blur border border-gray-200 p-4 rounded-lg shadow-sm text-sm text-gray-600 pointer-events-none select-none z-40">
         <div className="flex items-start gap-2">
-            <Info className="shrink-0 mt-0.5 text-blue-400" size={16} />
-            <div>
-                <p className="font-semibold text-gray-800">Ephemeral Infinity Board</p>
-                <p className="mt-1">Multiplayer is active. Open a second tab to see it.</p>
-                <p className="mt-1 text-xs text-gray-500">Hold Shift to multi-select. Group notes to auto-label them with AI. Hover over clusters to edit title or color.</p>
-            </div>
+          <Info className="shrink-0 mt-0.5 text-blue-400" size={16} />
+          <div>
+            <p className="font-semibold text-gray-800">Ephemeral Infinity Board</p>
+            <p className="mt-1">
+              {USE_SUPABASE 
+                ? "🌐 Real multiplayer! Notes sync across all users worldwide." 
+                : "Multiplayer syncs locally. Open a second tab to see it."}
+            </p>
+            <p className="mt-1 text-xs text-gray-500">Hold Shift to multi-select. Group notes to auto-label them with AI. Hover over clusters to edit title or color.</p>
+          </div>
         </div>
       </div>
       

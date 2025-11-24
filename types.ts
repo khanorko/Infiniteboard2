@@ -1,12 +1,15 @@
+// Screen-space point (regular numbers for rendering)
 export interface Point {
   x: number;
   y: number;
 }
 
+// World-space coordinates stored as strings for BigInt serialization
+// This allows truly infinite coordinate values
 export interface Note {
   id: string;
-  x: number;
-  y: number;
+  x: string;  // BigInt as string for unlimited precision
+  y: string;  // BigInt as string for unlimited precision
   text: string;
   color: string;
   createdAt: number;
@@ -18,18 +21,18 @@ export interface Note {
 export interface Cluster {
   id: string;
   title: string;
-  x: number;
-  y: number;
-  width: number;
+  x: string;      // BigInt as string
+  y: string;      // BigInt as string
+  width: number;  // Regular number (clusters have limited size)
   height: number;
-  color: string; // TailWind color class for border/bg
+  color: string;  // TailWind color class for border/bg
 }
 
 export interface UserCursor {
   id: string;
   name: string;
-  x: number; // World coordinates
-  y: number;
+  x: string; // World coordinates as BigInt string
+  y: string;
   color: string;
   lastActive: number;
 }
@@ -48,7 +51,7 @@ export const NOTE_COLORS = [
   'bg-note-orange',
 ];
 
-export const NOTE_LIFESPAN_MS = 60000; // 60 seconds
+export const NOTE_LIFESPAN_MS = 31415000; // π × 10,000 seconds (≈8.7 hours)
 
 export const CLUSTER_PRESETS = [
   { name: 'Blue', class: 'border-blue-400 bg-blue-50/20', dotColor: 'bg-blue-400' },

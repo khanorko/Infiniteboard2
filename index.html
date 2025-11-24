@@ -3,9 +3,33 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Ephemeral Infinity Board</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Ephemeral Infinity Board - Infinite Collaborative Whiteboard</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="A boundless, social whiteboard where ideas flourish and fade. Create sticky notes, brainstorm with AI, and collaborate in real-time on an infinite canvas." />
+    <meta name="keywords" content="whiteboard, brainstorming, collaboration, sticky notes, infinite canvas, AI, Gemini" />
+    
+    <!-- Open Graph / Social Sharing -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Ephemeral Infinity Board" />
+    <meta property="og:description" content="A boundless, social whiteboard where ideas flourish and fade. 60-second sticky notes + AI brainstorming." />
+    <meta property="og:image" content="/og-image.png" />
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ephemeral Infinity Board" />
+    <meta name="twitter:description" content="Infinite canvas. Ephemeral ideas. AI-powered brainstorming." />
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Permanent+Marker&family=Kalam:wght@400;700&display=swap" rel="stylesheet">
+    
+    <!-- Tailwind CSS (CDN for development, consider PostCSS for production) -->
+    <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
         theme: {
@@ -26,6 +50,7 @@
         },
       }
     </script>
+    
     <style>
       body {
         margin: 0;
@@ -36,24 +61,13 @@
         background-size: 40px 40px;
         background-image: radial-gradient(circle, #cbd5e1 1px, transparent 1px);
       }
-      /* Hide scrollbar for interactions */
       ::-webkit-scrollbar {
         display: none;
       }
     </style>
-  <script type="importmap">
-{
-  "imports": {
-    "react": "https://aistudiocdn.com/react@^19.2.0",
-    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
-    "react/": "https://aistudiocdn.com/react@^19.2.0/",
-    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
-    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0"
-  }
-}
-</script>
-</head>
+  </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
