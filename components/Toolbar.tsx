@@ -1,5 +1,5 @@
 import React from 'react';
-import { Hand, MousePointer2, StickyNote, GraduationCap } from 'lucide-react';
+import { Hand, MousePointer2, StickyNote, GraduationCap, Shuffle } from 'lucide-react';
 import { ToolType } from '../types';
 
 interface ToolbarProps {
@@ -7,6 +7,7 @@ interface ToolbarProps {
   onSelectTool: (tool: ToolType) => void;
   onReset: () => void;
   onShowTutorial: () => void;
+  onRandomLocation: () => void;
   noteCount: number;
 }
 
@@ -15,6 +16,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onSelectTool, 
   onReset,
   onShowTutorial,
+  onRandomLocation,
   noteCount
 }) => {
   const tools = [
@@ -57,6 +59,15 @@ const Toolbar: React.FC<ToolbarProps> = ({
          >
            <GraduationCap size={14} />
            Tutorial
+         </button>
+
+         <button
+          onClick={onRandomLocation}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border bg-gray-50 text-gray-500 border-gray-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200"
+          title="Teleport to a random private location"
+         >
+           <Shuffle size={14} />
+           Random
          </button>
 
          <div className="text-xs text-gray-400 font-mono ml-2">

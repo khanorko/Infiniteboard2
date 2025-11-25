@@ -506,6 +506,35 @@ const App: React.FC = () => {
     setTimeout(() => setToast(null), 3000);
   };
 
+  // --- Random Location (Privacy through Obscurity) ---
+  const handleRandomLocation = () => {
+    // Generate random coordinates in range ±10^12 (trillion)
+    // This ensures coordinates are far enough apart to be effectively private
+    const range = 1000000000000n; // 1 trillion
+    const randomX = BigInt(Math.floor(Math.random() * Number(range * 2n))) - range;
+    const randomY = BigInt(Math.floor(Math.random() * Number(range * 2n))) - range;
+    
+    const newX = randomX.toString();
+    const newY = randomY.toString();
+    
+    // Set the viewport to the new location
+    setViewportCenter({ x: newX, y: newY });
+    
+    // Create shareable URL
+    const url = new URL(window.location.origin);
+    url.searchParams.set('x', newX);
+    url.searchParams.set('y', newY);
+    
+    // Copy to clipboard
+    navigator.clipboard.writeText(url.toString()).then(() => {
+      setToast("🎲 Teleported to a private spot! Link copied 📋");
+    }).catch(() => {
+      setToast(`🎲 Teleported to (${newX.slice(0, 8)}..., ${newY.slice(0, 8)}...)`);
+    });
+    
+    setTimeout(() => setToast(null), 4000);
+  };
+
   const handleShare = (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
@@ -929,6 +958,7 @@ const App: React.FC = () => {
         onSelectTool={setActiveTool} 
         onReset={() => { setViewportCenter({ x: '0', y: '0' }); setScale(1); }}
         onShowTutorial={handleShowTutorial}
+        onRandomLocation={handleRandomLocation}
         noteCount={notes.length}
       />
 
