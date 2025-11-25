@@ -4,8 +4,11 @@ import StickyNote from './components/StickyNote';
 import ClusterGroup from './components/ClusterGroup';
 import Toolbar from './components/Toolbar';
 import Minimap from './components/Minimap';
+import Onboarding from './components/Onboarding/Onboarding';
+import TutorialPopovers from './components/TutorialPopovers';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
+import { useUserPreferences } from './hooks/useUserPreferences';
 import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles, Trash2 } from 'lucide-react';
 import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint } from './utils/bigCoords';
 import {
@@ -27,11 +30,37 @@ import type { RealtimeChannel } from '@supabase/supabase-js';
 // --- Multiplayer Helpers ---
 const BROADCAST_CHANNEL_NAME = 'ephemeral-board-sync';
 const MY_USER_ID = crypto.randomUUID();
-const MY_USER_NAME = `Guest ${Math.floor(Math.random() * 1000)}`;
-const MY_CURSOR_COLOR = ['#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6'][Math.floor(Math.random() * 5)];
 const USE_SUPABASE = isSupabaseConfigured();
 
+// Color map for cursor colors
+const COLOR_TO_HEX: Record<string, string> = {
+  'bg-note-yellow': '#fff740',
+  'bg-note-blue': '#a5ecfa',
+  'bg-note-green': '#ccff90',
+  'bg-note-pink': '#fdcfe8',
+  'bg-note-orange': '#ffc107',
+  'bg-note-purple': '#d8b4fe',
+  'bg-note-red': '#fca5a5',
+  'bg-note-teal': '#5eead4',
+  'bg-note-lime': '#bef264',
+  'bg-note-gray': '#d1d5db',
+};
+
 const App: React.FC = () => {
+  // User Preferences (from onboarding)
+  const {
+    userName,
+    userColor,
+    skipOnboarding,
+    shouldShowOnboarding,
+    isLoaded: prefsLoaded,
+    setUserName,
+    setUserColor,
+    setSkipOnboarding,
+    completeOnboarding,
+  } = useUserPreferences();
+  
+  const [showTutorialPopovers, setShowTutorialPopovers] = useState(false);
   // --- State ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -98,16 +127,18 @@ const App: React.FC = () => {
     broadcastChannelRef.current?.postMessage({ type, payload, senderId: MY_USER_ID });
   };
 
-  const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false) => {
+  const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false, customColor?: string) => {
     const newNote: Note = {
       id: crypto.randomUUID(),
       x: worldX,
       y: worldY,
       text: content,
-      color: NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
+      color: customColor || userColor || NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
       createdAt: Date.now(),
       expiresAt: Date.now() + NOTE_LIFESPAN_MS,
       rotation: Math.random() * 6 - 3,
+      width: 200,
+      height: 200,
     };
     setNotes(prev => [...prev, newNote]);
     broadcast('NOTE_CREATE', newNote);
@@ -120,7 +151,7 @@ const App: React.FC = () => {
     if (!aiGenerated) {
       setSelectedNoteIds(new Set([newNote.id]));
     }
-  }, []);
+  }, [userColor]);
 
   // --- Effects ---
 
@@ -545,6 +576,26 @@ const App: React.FC = () => {
     setTimeout(() => setToast(null), 4000);
   };
 
+  // --- Onboarding Complete Handler ---
+  const handleOnboardingComplete = useCallback((data: { userName: string; userColor: string; firstNoteText: string }) => {
+    // Save user preferences
+    setUserName(data.userName);
+    setUserColor(data.userColor);
+    completeOnboarding();
+    
+    // Create the first note at center of viewport
+    setTimeout(() => {
+      createNote('0', '0', data.firstNoteText, false, data.userColor);
+      setViewportCenter({ x: '0', y: '0' });
+      setScale(1);
+      
+      // Show tutorial popovers after a short delay
+      setTimeout(() => {
+        setShowTutorialPopovers(true);
+      }, 500);
+    }, 100);
+  }, [setUserName, setUserColor, completeOnboarding, createNote]);
+
   const handleShare = (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
@@ -652,10 +703,10 @@ const App: React.FC = () => {
     if (Math.random() > 0.5) {
       broadcast('CURSOR', {
         id: MY_USER_ID,
-        name: MY_USER_NAME,
+        name: userName || 'Anonymous',
         x: worldPos.x,
         y: worldPos.y,
-        color: MY_CURSOR_COLOR,
+        color: COLOR_TO_HEX[userColor] || '#fff740',
         lastActive: Date.now()
       });
     }
@@ -910,6 +961,28 @@ const App: React.FC = () => {
   const gridOffsetX = -Number(centerBig.x % 1000n) * scale;
   const gridOffsetY = -Number(centerBig.y % 1000n) * scale;
 
+  // Show loading state while preferences are loading
+  if (!prefsLoaded) {
+    return (
+      <div className="w-screen h-screen bg-gray-900 flex items-center justify-center">
+        <div className="text-white/50 text-lg animate-pulse">Loading...</div>
+      </div>
+    );
+  }
+
+  // Show onboarding if not completed
+  if (shouldShowOnboarding) {
+    return (
+      <Onboarding
+        initialUserName={userName}
+        initialUserColor={userColor}
+        skipOnboarding={skipOnboarding}
+        onSkipChange={setSkipOnboarding}
+        onComplete={handleOnboardingComplete}
+      />
+    );
+  }
+
   return (
     <div 
       ref={containerRef}
@@ -1089,6 +1162,12 @@ const App: React.FC = () => {
           {toast}
         </div>
       )}
+
+      {/* Tutorial Popovers (after onboarding) */}
+      <TutorialPopovers
+        isActive={showTutorialPopovers}
+        onComplete={() => setShowTutorialPopovers(false)}
+      />
 
       {/* AI Loading Indicator */}
       {isProcessingAI && (

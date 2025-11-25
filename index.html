@@ -69,6 +69,37 @@
       ::-webkit-scrollbar {
         display: none;
       }
+      
+      /* Onboarding Animations */
+      @keyframes fade-in-up {
+        from {
+          opacity: 0;
+          transform: translateY(20px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+      
+      @keyframes pulse-expand {
+        from {
+          opacity: 0.8;
+          transform: scale(0.5);
+        }
+        to {
+          opacity: 0;
+          transform: scale(2);
+        }
+      }
+      
+      .animate-fade-in-up {
+        animation: fade-in-up 0.6s ease-out forwards;
+      }
+      
+      .animate-pulse-expand {
+        animation: pulse-expand 0.8s ease-out forwards;
+      }
     </style>
   </head>
   <body>
