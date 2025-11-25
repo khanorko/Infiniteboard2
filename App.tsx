@@ -6,7 +6,7 @@ import Toolbar from './components/Toolbar';
 import Minimap from './components/Minimap';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
-import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles } from 'lucide-react';
+import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles, Trash2 } from 'lucide-react';
 import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint } from './utils/bigCoords';
 import {
   isSupabaseConfigured,
@@ -458,6 +458,16 @@ const App: React.FC = () => {
     setClusters(prev => prev.filter(c => !clustersToRemove.has(c.id)));
   };
 
+  const handleClusterDelete = (id: string) => {
+    setClusters(prev => prev.filter(c => c.id !== id));
+    broadcast('CLUSTER_DELETE', id);
+    if (USE_SUPABASE) {
+      deleteClusterFromDb(id);
+    }
+    setToast('Cluster deleted (notes remain)');
+    setTimeout(() => setToast(null), 2000);
+  };
+
   const handleClusterUpdate = (id: string, updates: Partial<Cluster>) => {
     setClusters(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
     broadcast('CLUSTER_UPDATE', { id, updates });
@@ -819,6 +829,46 @@ const App: React.FC = () => {
     }
   };
 
+  // Bulk operations for selected notes
+  const handleBulkColorChange = (color: string) => {
+    if (selectedNoteIds.size === 0) return;
+    
+    setNotes(prev => prev.map(n => 
+      selectedNoteIds.has(n.id) ? { ...n, color } : n
+    ));
+    
+    // Broadcast and save each note's color change
+    selectedNoteIds.forEach(id => {
+      broadcast('NOTE_UPDATE', { id, color });
+      if (USE_SUPABASE) {
+        updateNoteInDb(id, { color });
+      }
+    });
+    
+    setToast(`Changed color of ${selectedNoteIds.size} notes`);
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedNoteIds.size === 0) return;
+    
+    const count = selectedNoteIds.size;
+    
+    // Delete all selected notes
+    selectedNoteIds.forEach(id => {
+      broadcast('NOTE_DELETE', id);
+      if (USE_SUPABASE) {
+        deleteNoteFromDb(id);
+      }
+    });
+    
+    setNotes(prev => prev.filter(n => !selectedNoteIds.has(n.id)));
+    setSelectedNoteIds(new Set());
+    
+    setToast(`Deleted ${count} notes`);
+    setTimeout(() => setToast(null), 2000);
+  };
+
   const handleGeminiExpand = async (id: string, text: string) => {
     if (!text || text.length < 3) return;
     
@@ -888,6 +938,7 @@ const App: React.FC = () => {
             screenY={screenPos.y}
             scale={scale}
             onUpdate={handleClusterUpdate}
+            onDelete={handleClusterDelete}
           />
         );
       })}
@@ -987,6 +1038,20 @@ const App: React.FC = () => {
           <span className="text-xs font-semibold text-gray-500 px-2">{selectedNoteIds.size} Selected</span>
           <div className="h-4 w-px bg-gray-200 mx-1" />
           
+          {/* Color Picker */}
+          <div className="flex items-center gap-1 px-1">
+            {NOTE_COLORS.map((color) => (
+              <button
+                key={color}
+                onClick={() => handleBulkColorChange(color)}
+                className={`w-5 h-5 rounded-full ${color} border-2 border-white shadow-sm hover:scale-125 transition-transform`}
+                title={`Change to ${color.replace('bg-note-', '')}`}
+              />
+            ))}
+          </div>
+          
+          <div className="h-4 w-px bg-gray-200 mx-1" />
+          
           <button 
             onClick={handleCreateCluster}
             disabled={selectedNoteIds.size < 2 || isProcessingAI}
@@ -998,11 +1063,22 @@ const App: React.FC = () => {
           
           <button 
             onClick={handleUngroup}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 text-red-600 font-medium text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-orange-50 text-orange-600 font-medium text-sm transition-colors"
             title="Ungroup overlapping clusters"
           >
             <Ungroup size={14} />
             Ungroup
+          </button>
+          
+          <div className="h-4 w-px bg-gray-200 mx-1" />
+          
+          <button 
+            onClick={handleBulkDelete}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 text-red-600 font-medium text-sm transition-colors"
+            title="Delete all selected notes"
+          >
+            <Trash2 size={14} />
+            Delete
           </button>
         </div>
       )}

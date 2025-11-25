@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Cluster, CLUSTER_PRESETS } from '../types';
-import { Check, Edit2 } from 'lucide-react';
+import { Check, Edit2, X } from 'lucide-react';
 
 interface ClusterGroupProps {
   cluster: Cluster;
@@ -8,9 +8,10 @@ interface ClusterGroupProps {
   screenY: number;
   scale: number;
   onUpdate: (id: string, updates: Partial<Cluster>) => void;
+  onDelete: (id: string) => void;
 }
 
-const ClusterGroup: React.FC<ClusterGroupProps> = ({ cluster, screenX, screenY, scale, onUpdate }) => {
+const ClusterGroup: React.FC<ClusterGroupProps> = ({ cluster, screenX, screenY, scale, onUpdate, onDelete }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [title, setTitle] = useState(cluster.title);
 
@@ -84,7 +85,7 @@ const ClusterGroup: React.FC<ClusterGroupProps> = ({ cluster, screenX, screenY, 
         )}
       </div>
 
-      {/* Color Picker (Visible on hover) */}
+      {/* Color Picker & Delete (Visible on hover) */}
       <div 
         className="absolute right-4 bg-white/95 backdrop-blur px-2 py-1.5 rounded-full shadow-sm border border-gray-200 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
         style={{ top: -16 * scale }}
@@ -98,6 +99,14 @@ const ClusterGroup: React.FC<ClusterGroupProps> = ({ cluster, screenX, screenY, 
             title={preset.name}
           />
         ))}
+        <div className="w-px h-3 bg-gray-300 mx-0.5" />
+        <button
+          onClick={() => onDelete(cluster.id)}
+          className="w-4 h-4 rounded-full flex items-center justify-center text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+          title="Delete cluster (notes will remain)"
+        >
+          <X size={12} />
+        </button>
       </div>
     </div>
   );
