@@ -65,37 +65,37 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
     >
       
       {/* Zoom Controls */}
-      <div className="bg-white rounded-lg shadow-xl border border-gray-200 flex flex-col overflow-hidden mb-2">
+      <div className="bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 flex flex-col overflow-hidden mb-2">
          <button 
            onClick={() => onZoom(0.1)} 
-           className="p-2 hover:bg-gray-100 border-b border-gray-100 flex items-center justify-center text-gray-700 active:bg-gray-200"
+           className="p-2 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20"
          >
             <Plus size={20} />
          </button>
          <button 
             onClick={() => onZoom(-0.1)}
-            className="p-2 hover:bg-gray-100 flex items-center justify-center text-gray-700 active:bg-gray-200"
+            className="p-2 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20"
          >
             <Minus size={20} />
          </button>
       </div>
 
       {/* Navigator Panel */}
-      <div className="bg-white p-4 rounded-lg shadow-xl border border-gray-200 w-72 transition-all duration-300">
+      <div className="bg-gray-900/80 backdrop-blur-xl p-4 rounded-lg shadow-xl border border-white/10 w-72 transition-all duration-300">
         <div className="flex items-center justify-between mb-2">
-            <h3 className="font-semibold text-gray-700 text-sm flex items-center gap-2">
-                <Navigation size={16} className="text-blue-500"/> 
+            <h3 className="font-semibold text-white/80 text-sm flex items-center gap-2">
+                <Navigation size={16} className="text-blue-400"/> 
                 Navigator
             </h3>
             <button 
                 onClick={() => onMoveTo('0', '0')}
-                className="text-xs text-blue-500 hover:text-blue-700 hover:underline"
+                className="text-xs text-blue-400 hover:text-blue-300 hover:underline"
             >
                 Reset to Origin
             </button>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-xs font-mono text-gray-500 mb-3 bg-gray-50 p-2 rounded overflow-hidden">
+        <div className="grid grid-cols-2 gap-2 text-xs font-mono text-white/50 mb-3 bg-white/5 p-2 rounded overflow-hidden">
             <div className="truncate" title={`X: ${centerX}`}>X: {formatCoord(centerX)}</div>
             <div className="truncate" title={`Y: ${centerY}`}>Y: {formatCoord(centerY)}</div>
         </div>
@@ -110,7 +110,7 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
                       setError(null);
                     }}
                     onKeyDown={handleKeyDown}
-                    className="w-full border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400 outline-none font-mono"
+                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white/90 placeholder:text-white/30 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none font-mono"
                     placeholder="X coordinate"
                 />
                 <input 
@@ -121,23 +121,23 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
                       setError(null);
                     }}
                     onKeyDown={handleKeyDown}
-                    className="w-full border rounded px-2 py-1 text-sm focus:ring-2 focus:ring-blue-400 outline-none font-mono"
+                    className="w-full bg-white/5 border border-white/10 rounded px-2 py-1 text-sm text-white/90 placeholder:text-white/30 focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50 outline-none font-mono"
                     placeholder="Y coordinate"
                 />
             </div>
             <button 
                 onClick={handleGo}
-                className="h-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 flex items-center justify-center shadow-sm active:translate-y-0.5 transition-all"
+                className="h-full bg-blue-500/80 text-white p-2 rounded hover:bg-blue-500 flex items-center justify-center shadow-sm active:translate-y-0.5 transition-all"
             >
                 Go
             </button>
         </div>
         
         {error && (
-          <p className="text-xs text-red-500 mt-1">{error}</p>
+          <p className="text-xs text-red-400 mt-1">{error}</p>
         )}
         
-        <p className="text-xs text-gray-400 mt-2 flex items-center gap-1">
+        <p className="text-xs text-white/40 mt-2 flex items-center gap-1">
           <Infinity size={12} className="text-blue-400" />
           Truly infinite coordinates!
         </p>

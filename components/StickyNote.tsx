@@ -15,6 +15,8 @@ interface StickyNoteProps {
   onResize?: (id: string, width: number, height: number) => void;
   onAIExpand?: (id: string, text: string) => void;
   onShare?: (id: string) => void;
+  isFirstNote?: boolean;
+  distanceOpacity?: number;
 }
 
 const StickyNote: React.FC<StickyNoteProps> = ({
@@ -29,7 +31,9 @@ const StickyNote: React.FC<StickyNoteProps> = ({
   onMouseDown,
   onResize,
   onAIExpand,
-  onShare
+  onShare,
+  isFirstNote = false,
+  distanceOpacity = 1,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [timeLeft, setTimeLeft] = useState(60);
@@ -144,13 +148,14 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         height: `${localHeight}px`,
         backgroundColor: 'transparent',
         zIndex: selected || isResizing ? 50 : 10,
-        opacity: note.isFalling ? 0 : 1,
-        transition: note.isFalling ? 'none' : (isResizing ? 'none' : 'opacity 0.5s ease-out')
+        opacity: note.isFalling ? 0 : distanceOpacity,
+        transition: note.isFalling ? 'none' : (isResizing ? 'none' : 'opacity 0.5s ease-out'),
+        filter: distanceOpacity < 0.7 ? `blur(${(1 - distanceOpacity) * 2}px)` : 'none',
       }}
       onMouseDown={handleMouseDown}
     >
       <div 
-        className={`w-full h-full p-4 flex flex-col ${note.color} ${selected ? 'ring-4 ring-blue-500 shadow-2xl scale-[1.02]' : 'shadow-lg'} relative`}
+        className={`w-full h-full p-4 flex flex-col ${note.color} ${selected ? 'ring-4 ring-blue-500 shadow-2xl scale-[1.02]' : 'shadow-lg'} ${isFirstNote ? 'animate-note-glow' : ''} relative`}
         style={{
           transition: isResizing ? 'none' : 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
         }}

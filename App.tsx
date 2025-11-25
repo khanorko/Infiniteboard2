@@ -5,6 +5,7 @@ import ClusterGroup from './components/ClusterGroup';
 import Toolbar from './components/Toolbar';
 import Minimap from './components/Minimap';
 import Onboarding from './components/Onboarding/Onboarding';
+import Starfield from './components/Onboarding/Starfield';
 import TutorialPopovers from './components/TutorialPopovers';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
@@ -61,6 +62,12 @@ const App: React.FC = () => {
   } = useUserPreferences();
   
   const [showTutorialPopovers, setShowTutorialPopovers] = useState(false);
+  
+  // Board entry animation states
+  const [isEnteringBoard, setIsEnteringBoard] = useState(false);
+  const [showWelcomeText, setShowWelcomeText] = useState(false);
+  const [firstNoteId, setFirstNoteId] = useState<string | null>(null);
+  
   // --- State ---
   const [notes, setNotes] = useState<Note[]>([]);
   const [clusters, setClusters] = useState<Cluster[]>([]);
@@ -583,18 +590,76 @@ const App: React.FC = () => {
     setUserColor(data.userColor);
     completeOnboarding();
     
-    // Create the first note at center of viewport
+    // Generate random start location far from origin (15000-25000 in random direction)
+    const angle = Math.random() * Math.PI * 2;
+    const distance = 15000 + Math.random() * 10000;
+    const startX = Math.round(Math.cos(angle) * distance);
+    const startY = Math.round(Math.sin(angle) * distance);
+    
+    // Start camera entry animation
+    setIsEnteringBoard(true);
+    setScale(0.3); // Start zoomed out
+    setViewportCenter({ x: startX.toString(), y: startY.toString() });
+    
+    // After a brief moment, start the zoom-in and show welcome text
     setTimeout(() => {
-      createNote('0', '0', data.firstNoteText, false, data.userColor);
-      setViewportCenter({ x: '0', y: '0' });
-      setScale(1);
+      setShowWelcomeText(true);
       
-      // Show tutorial popovers after a short delay
-      setTimeout(() => {
-        setShowTutorialPopovers(true);
-      }, 500);
-    }, 100);
-  }, [setUserName, setUserColor, completeOnboarding, createNote]);
+      // Animate zoom to 1 over 1.5 seconds
+      const startTime = Date.now();
+      const duration = 1500;
+      const startScale = 0.3;
+      const endScale = 1;
+      
+      const animateZoom = () => {
+        const elapsed = Date.now() - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        // Ease out cubic
+        const eased = 1 - Math.pow(1 - progress, 3);
+        setScale(startScale + (endScale - startScale) * eased);
+        
+        if (progress < 1) {
+          requestAnimationFrame(animateZoom);
+        } else {
+          // Zoom complete - create the first note with glow
+          const noteId = crypto.randomUUID();
+          const newNote: Note = {
+            id: noteId,
+            x: startX.toString(),
+            y: startY.toString(),
+            text: data.firstNoteText,
+            color: data.userColor,
+            createdAt: Date.now(),
+            expiresAt: Date.now() + NOTE_LIFESPAN_MS,
+            rotation: Math.random() * 6 - 3,
+            width: 200,
+            height: 200,
+          };
+          setNotes(prev => [...prev, newNote]);
+          setFirstNoteId(noteId);
+          
+          if (USE_SUPABASE) {
+            createNoteInDb(newNote);
+          }
+          
+          // Hide welcome text and end entering state
+          setTimeout(() => {
+            setShowWelcomeText(false);
+            setIsEnteringBoard(false);
+            
+            // Show tutorial popovers
+            setTimeout(() => {
+              setShowTutorialPopovers(true);
+              // Clear first note glow after a few seconds
+              setTimeout(() => setFirstNoteId(null), 6000);
+            }, 500);
+          }, 1500);
+        }
+      };
+      
+      requestAnimationFrame(animateZoom);
+    }, 500);
+  }, [setUserName, setUserColor, completeOnboarding]);
 
   const handleShare = (id: string) => {
     const note = notes.find(n => n.id === id);
@@ -983,18 +1048,39 @@ const App: React.FC = () => {
     );
   }
 
+  // Calculate parallax offset for stars (stars move slower than canvas)
+  const parallaxX = Number(centerBig.x % 10000n);
+  const parallaxY = Number(centerBig.y % 10000n);
+
   return (
-    <div 
-      ref={containerRef}
-      className={`w-screen h-screen overflow-hidden relative dot-grid ${activeTool === ToolType.HAND ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'}`}
-      onWheel={handleWheel}
-      onMouseDown={handleMouseDown}
-      onMouseMove={handleMouseMove}
-      style={{
-        backgroundPosition: `${gridOffsetX}px ${gridOffsetY}px`,
-        backgroundSize: `${40 * scale}px ${40 * scale}px`
-      }}
-    >
+    <>
+      {/* Persistent Starfield Background */}
+      <Starfield 
+        mode="board" 
+        parallaxOffsetX={parallaxX}
+        parallaxOffsetY={parallaxY}
+      />
+      
+      <div 
+        ref={containerRef}
+        className={`w-screen h-screen overflow-hidden relative dot-grid ${activeTool === ToolType.HAND ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'} ${isEnteringBoard ? 'animate-zoom-in' : ''}`}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        style={{
+          backgroundPosition: `${gridOffsetX}px ${gridOffsetY}px`,
+          backgroundSize: `${40 * scale}px ${40 * scale}px`
+        }}
+      >
+      {/* Welcome Text Overlay */}
+      {showWelcomeText && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none">
+          <p className="text-white/70 text-xl font-light tracking-wider animate-welcome">
+            You are in your space now.
+          </p>
+        </div>
+      )}
+      
       {/* Render Clusters */}
       {clusters.map(cluster => {
         const screenPos = worldToScreen(cluster.x, cluster.y);
@@ -1024,6 +1110,18 @@ const App: React.FC = () => {
             screenPos.y < -500 || screenPos.y > window.innerHeight + 500) {
           return null;
         }
+        
+        // Calculate distance from screen center for fog effect
+        const screenCenterX = window.innerWidth / 2;
+        const screenCenterY = window.innerHeight / 2;
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(screenPos.x + 100 - screenCenterX, 2) + 
+          Math.pow(screenPos.y + 100 - screenCenterY, 2)
+        );
+        const maxDistance = Math.sqrt(Math.pow(screenCenterX, 2) + Math.pow(screenCenterY, 2));
+        // Fade from 100% at center to 40% at edges
+        const distanceOpacity = Math.max(0.4, 1 - (distanceFromCenter / maxDistance) * 0.6);
+        
         return (
           <StickyNote 
             key={note.id} 
@@ -1039,6 +1137,8 @@ const App: React.FC = () => {
             onMouseDown={onNoteMouseDown}
             onAIExpand={handleGeminiExpand}
             onShare={handleShare}
+            isFirstNote={note.id === firstNoteId}
+            distanceOpacity={distanceOpacity}
           />
         );
       })}
@@ -1107,9 +1207,9 @@ const App: React.FC = () => {
 
       {/* Floating Context Menu for Selection */}
       {selectedNoteIds.size > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-white rounded-xl shadow-xl border border-gray-200 p-2 z-50 animate-in fade-in slide-in-from-bottom-4">
-          <span className="text-xs font-semibold text-gray-500 px-2">{selectedNoteIds.size} Selected</span>
-          <div className="h-4 w-px bg-gray-200 mx-1" />
+        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-gray-900/90 backdrop-blur-xl rounded-xl shadow-xl border border-white/10 p-2 z-50 animate-in fade-in slide-in-from-bottom-4">
+          <span className="text-xs font-semibold text-white/60 px-2">{selectedNoteIds.size} Selected</span>
+          <div className="h-4 w-px bg-white/10 mx-1" />
           
           {/* Color Picker */}
           <div className="flex items-center gap-1 px-1">
@@ -1117,18 +1217,18 @@ const App: React.FC = () => {
               <button
                 key={color}
                 onClick={() => handleBulkColorChange(color)}
-                className={`w-5 h-5 rounded-full ${color} border-2 border-white shadow-sm hover:scale-125 transition-transform`}
+                className={`w-5 h-5 rounded-full ${color} border-2 border-gray-800 shadow-sm hover:scale-125 transition-transform`}
                 title={`Change to ${color.replace('bg-note-', '')}`}
               />
             ))}
           </div>
           
-          <div className="h-4 w-px bg-gray-200 mx-1" />
+          <div className="h-4 w-px bg-white/10 mx-1" />
           
           <button 
             onClick={handleCreateCluster}
             disabled={selectedNoteIds.size < 2 || isProcessingAI}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-blue-50 text-blue-600 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-blue-500/20 text-blue-400 font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {isProcessingAI ? <Loader2 className="animate-spin" size={14}/> : <BoxSelect size={14} />}
             Group & Label
@@ -1136,18 +1236,18 @@ const App: React.FC = () => {
           
           <button 
             onClick={handleUngroup}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-orange-50 text-orange-600 font-medium text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-orange-500/20 text-orange-400 font-medium text-sm transition-colors"
             title="Ungroup overlapping clusters"
           >
             <Ungroup size={14} />
             Ungroup
           </button>
           
-          <div className="h-4 w-px bg-gray-200 mx-1" />
+          <div className="h-4 w-px bg-white/10 mx-1" />
           
           <button 
             onClick={handleBulkDelete}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-50 text-red-600 font-medium text-sm transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-red-500/20 text-red-400 font-medium text-sm transition-colors"
             title="Delete all selected notes"
           >
             <Trash2 size={14} />
@@ -1171,62 +1271,63 @@ const App: React.FC = () => {
 
       {/* AI Loading Indicator */}
       {isProcessingAI && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-purple-200 flex items-center gap-2 z-50 text-purple-700 animate-pulse">
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-xl px-4 py-2 rounded-full shadow-lg border border-purple-500/30 flex items-center gap-2 z-50 text-purple-300 animate-pulse">
           <Loader2 className="animate-spin" size={16} />
           <span className="text-sm font-medium">Gemini is thinking...</span>
         </div>
       )}
 
       {/* Connection Status */}
-      <div className="fixed top-6 left-6 flex items-center gap-2 bg-white/80 backdrop-blur border border-gray-200 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
+      <div className="fixed top-6 left-6 flex items-center gap-2 bg-gray-900/80 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
         {connectionStatus === 'connected' ? (
           <>
-            <Wifi className="text-green-500" size={16} />
-            <span className="text-green-700 font-medium">Online</span>
+            <Wifi className="text-green-400" size={16} />
+            <span className="text-green-400 font-medium">Online</span>
           </>
         ) : connectionStatus === 'connecting' ? (
           <>
-            <Loader2 className="text-blue-500 animate-spin" size={16} />
-            <span className="text-blue-700 font-medium">Connecting...</span>
+            <Loader2 className="text-blue-400 animate-spin" size={16} />
+            <span className="text-blue-400 font-medium">Connecting...</span>
           </>
         ) : (
           <>
-            <WifiOff className="text-gray-400" size={16} />
-            <span className="text-gray-600 font-medium">Local Mode</span>
+            <WifiOff className="text-white/40" size={16} />
+            <span className="text-white/60 font-medium">Local Mode</span>
           </>
         )}
       </div>
 
       {/* AI Credits Indicator */}
-      <div className="fixed top-16 left-6 flex items-center gap-2 bg-white/80 backdrop-blur border border-gray-200 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
-        <Sparkles className={isLimitReached ? 'text-gray-400' : 'text-purple-500'} size={16} />
-        <span className={isLimitReached ? 'text-gray-500' : 'text-purple-700'}>
+      <div className="fixed top-16 left-6 flex items-center gap-2 bg-gray-900/80 backdrop-blur-xl border border-white/10 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
+        <Sparkles className={isLimitReached ? 'text-white/40' : 'text-purple-400'} size={16} />
+        <span className={isLimitReached ? 'text-white/50' : 'text-purple-300'}>
           {remainingCredits}/5 AI credits
         </span>
         {isLimitReached && (
-          <span className="text-xs text-orange-600 font-medium ml-1">
+          <span className="text-xs text-orange-400 font-medium ml-1">
             (resets tomorrow)
           </span>
         )}
       </div>
 
       {/* Info Toast */}
-      <div className="fixed top-6 right-6 max-w-xs bg-white/80 backdrop-blur border border-gray-200 p-4 rounded-lg shadow-sm text-sm text-gray-600 pointer-events-none select-none z-40">
+      <div className="fixed top-6 right-6 max-w-xs bg-gray-900/80 backdrop-blur-xl border border-white/10 p-4 rounded-lg shadow-sm text-sm text-white/60 pointer-events-none select-none z-40">
         <div className="flex items-start gap-2">
           <Info className="shrink-0 mt-0.5 text-blue-400" size={16} />
           <div>
-            <p className="font-semibold text-gray-800">Ephemeral Infinity Board</p>
+            <p className="font-semibold text-white/90">Ephemeral Infinity Board</p>
             <p className="mt-1">
               {USE_SUPABASE 
                 ? "🌐 Real multiplayer! Notes sync across all users worldwide." 
                 : "Multiplayer syncs locally. Open a second tab to see it."}
             </p>
-            <p className="mt-1 text-xs text-gray-500">Hold Shift to multi-select. Group notes to auto-label them with AI. Hover over clusters to edit title or color.</p>
+            <p className="mt-1 text-xs text-white/40">Hold Shift to multi-select. Group notes to auto-label them with AI. Hover over clusters to edit title or color.</p>
           </div>
         </div>
       </div>
       
     </div>
+    </>
   );
 };
 

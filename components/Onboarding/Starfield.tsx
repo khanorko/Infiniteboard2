@@ -1,20 +1,36 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as THREE from 'three';
 
 interface StarfieldProps {
-  isWarping: boolean;
+  isWarping?: boolean;
   onWarpComplete?: () => void;
+  // Board mode props
+  mode?: 'onboarding' | 'board';
+  parallaxOffsetX?: number;
+  parallaxOffsetY?: number;
 }
 
-const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
+const Starfield: React.FC<StarfieldProps> = ({ 
+  isWarping = false, 
+  onWarpComplete,
+  mode = 'onboarding',
+  parallaxOffsetX = 0,
+  parallaxOffsetY = 0,
+}) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const starsRef = useRef<THREE.Points | null>(null);
   const animationRef = useRef<number>(0);
-  const speedRef = useRef(0.5);
+  const speedRef = useRef(mode === 'board' ? 0.05 : 0.5);
+  const parallaxRef = useRef({ x: 0, y: 0 });
   const [opacity, setOpacity] = useState(1);
+
+  // Update parallax offset
+  useEffect(() => {
+    parallaxRef.current = { x: parallaxOffsetX, y: parallaxOffsetY };
+  }, [parallaxOffsetX, parallaxOffsetY]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -44,12 +60,13 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
     containerRef.current.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // Stars
-    const starCount = 3000;
+    // Stars - fewer and dimmer for board mode
+    const starCount = mode === 'board' ? 1500 : 3000;
     const geometry = new THREE.BufferGeometry();
     const positions = new Float32Array(starCount * 3);
     const colors = new Float32Array(starCount * 3);
     const sizes = new Float32Array(starCount);
+    const basePositions = new Float32Array(starCount * 3); // Store initial positions for parallax
 
     for (let i = 0; i < starCount; i++) {
       const i3 = i * 3;
@@ -60,26 +77,32 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
       positions[i3] = Math.cos(theta) * radius;
       positions[i3 + 1] = Math.sin(theta) * radius;
       positions[i3 + 2] = (Math.random() - 0.5) * 2000;
+      
+      // Store base positions
+      basePositions[i3] = positions[i3];
+      basePositions[i3 + 1] = positions[i3 + 1];
+      basePositions[i3 + 2] = positions[i3 + 2];
 
       // Slight color variation (bluish white to warm white)
       const colorMix = Math.random();
-      colors[i3] = 0.8 + colorMix * 0.2;     // R
-      colors[i3 + 1] = 0.85 + colorMix * 0.15; // G
-      colors[i3 + 2] = 0.95 + (1 - colorMix) * 0.05; // B
+      const brightness = mode === 'board' ? 0.4 : 1; // Dimmer for board
+      colors[i3] = (0.8 + colorMix * 0.2) * brightness;     // R
+      colors[i3 + 1] = (0.85 + colorMix * 0.15) * brightness; // G
+      colors[i3 + 2] = (0.95 + (1 - colorMix) * 0.05) * brightness; // B
 
-      sizes[i] = Math.random() * 2 + 0.5;
+      sizes[i] = (Math.random() * 2 + 0.5) * (mode === 'board' ? 0.7 : 1);
     }
 
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
     geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
     geometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
 
-    // Star material with custom shader for better points
+    // Star material
     const material = new THREE.PointsMaterial({
-      size: 2,
+      size: mode === 'board' ? 1.5 : 2,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
+      opacity: mode === 'board' ? 0.6 : 0.9,
       sizeAttenuation: true,
     });
 
@@ -87,24 +110,40 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
     scene.add(stars);
     starsRef.current = stars;
 
+    // Store base positions on the geometry for parallax calculation
+    (geometry as any).basePositions = basePositions;
+
     // Animation loop
     const animate = () => {
       animationRef.current = requestAnimationFrame(animate);
 
       const positions = stars.geometry.attributes.position.array as Float32Array;
+      const base = (stars.geometry as any).basePositions as Float32Array;
       const speed = speedRef.current;
+      const { x: px, y: py } = parallaxRef.current;
 
       for (let i = 0; i < starCount; i++) {
         const i3 = i * 3;
+        
+        // Apply parallax offset (stars move slower than canvas)
+        if (mode === 'board') {
+          positions[i3] = base[i3] + px * 0.1;
+          positions[i3 + 1] = base[i3 + 1] + py * 0.1;
+        }
+        
         positions[i3 + 2] += speed;
 
         // Reset stars that pass the camera
         if (positions[i3 + 2] > 1000) {
           positions[i3 + 2] = -1000;
-          const radius = Math.random() * 800 + 100;
-          const theta = Math.random() * Math.PI * 2;
-          positions[i3] = Math.cos(theta) * radius;
-          positions[i3 + 1] = Math.sin(theta) * radius;
+          if (mode !== 'board') {
+            const radius = Math.random() * 800 + 100;
+            const theta = Math.random() * Math.PI * 2;
+            positions[i3] = Math.cos(theta) * radius;
+            positions[i3 + 1] = Math.sin(theta) * radius;
+            base[i3] = positions[i3];
+            base[i3 + 1] = positions[i3 + 1];
+          }
         }
       }
 
@@ -134,11 +173,11 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
       geometry.dispose();
       material.dispose();
     };
-  }, []);
+  }, [mode]);
 
   // Handle warp effect
   useEffect(() => {
-    if (isWarping) {
+    if (isWarping && mode === 'onboarding') {
       // Accelerate stars
       const startTime = Date.now();
       const duration = 2000; // 2 seconds warp
@@ -164,7 +203,7 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
 
       accelerate();
     }
-  }, [isWarping, onWarpComplete]);
+  }, [isWarping, onWarpComplete, mode]);
 
   return (
     <div 
@@ -176,4 +215,3 @@ const Starfield: React.FC<StarfieldProps> = ({ isWarping, onWarpComplete }) => {
 };
 
 export default Starfield;
-
