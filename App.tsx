@@ -5,7 +5,8 @@ import ClusterGroup from './components/ClusterGroup';
 import Toolbar from './components/Toolbar';
 import Minimap from './components/Minimap';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
-import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff } from 'lucide-react';
+import { useAIUsage } from './hooks/useAIUsage';
+import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles } from 'lucide-react';
 import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint } from './utils/bigCoords';
 import {
   isSupabaseConfigured,
@@ -52,9 +53,11 @@ const App: React.FC = () => {
   const supabaseChannelRef = useRef<RealtimeChannel | null>(null);
   
   // UX State
-  const [isSimulating, setIsSimulating] = useState(false);
   const [isProcessingAI, setIsProcessingAI] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  
+  // AI Usage Limits
+  const { remainingCredits, checkLimit, incrementUsage, isLimitReached } = useAIUsage();
   
   // Interaction State
   const [isDragging, setIsDragging] = useState(false);
@@ -364,27 +367,14 @@ const App: React.FC = () => {
     return () => clearInterval(checkInterval);
   }, []);
 
-  // 6. Bot Simulation
-  useEffect(() => {
-    if (!isSimulating) return;
-    const interval = setInterval(() => {
-      // Create note near viewport center
-      const offsetX = Math.round(Math.random() * 800 - 400);
-      const offsetY = Math.round(Math.random() * 600 - 300);
-      const noteX = (centerBig.x + BigInt(offsetX)).toString();
-      const noteY = (centerBig.y + BigInt(offsetY)).toString();
-      const dummyTexts = ["Idea A", "Review", "Deploy", "Docs", "Refactor", "Test"];
-      createNote(noteX, noteY, dummyTexts[Math.floor(Math.random() * dummyTexts.length)], true);
-    }, 2000);
-    return () => clearInterval(interval);
-  }, [isSimulating, createNote, centerBig]);
+  // 6. Bot Simulation - REMOVED
+  // The simulation effect has been removed as requested.
 
   // --- Logic: Clustering ---
 
   const handleCreateCluster = async () => {
     if (selectedNoteIds.size < 2) return;
     
-    setIsProcessingAI(true);
     const selectedNotes = notes.filter(n => selectedNoteIds.has(n.id));
     
     // Calculate bounds using BigInt
@@ -410,7 +400,18 @@ const App: React.FC = () => {
     maxY += padding;
 
     const noteTexts = selectedNotes.map(n => n.text).filter(t => t.length > 0);
-    const title = await generateClusterTitle(noteTexts);
+    
+    // Check AI usage limit for cluster title generation
+    let title = "New Group";
+    if (checkLimit()) {
+      setIsProcessingAI(true);
+      title = await generateClusterTitle(noteTexts);
+      incrementUsage();
+      setIsProcessingAI(false);
+    } else {
+      setToast(`✨ AI limit reached! (${remainingCredits}/5 credits) - Using default title`);
+      setTimeout(() => setToast(null), 3000);
+    }
 
     const newCluster: Cluster = {
       id: crypto.randomUUID(),
@@ -427,7 +428,6 @@ const App: React.FC = () => {
     if (USE_SUPABASE) {
       createClusterInDb(newCluster);
     }
-    setIsProcessingAI(false);
     setSelectedNoteIds(new Set());
   };
 
@@ -467,6 +467,44 @@ const App: React.FC = () => {
   };
 
   // --- Handlers ---
+
+  // --- Tutorial ---
+  const handleShowTutorial = () => {
+    // Coordinates for the tutorial area
+    const startX = 10000n;
+    const startY = 10000n;
+    const spacing = 300n;
+    const cols = 4;
+    
+    const tutorialNotesContent = [
+      "👋 Welcome to Ephemeral Infinity Board!\n\nThis is a cosmic canvas where ideas flourish and fade after π×10⁴ seconds (≈8.7 hours).\n\nEverything you see is REAL and syncs worldwide! 🌐",
+      "✏️ Create Notes\n\nClick anywhere on the canvas to drop a new sticky note.\n\nTry it now! Click the canvas and start writing. ➡️",
+      "🗺️ Navigate the Infinite Canvas\n\n• Drag background = Pan around\n• Mouse wheel = Zoom in/out\n• This board is TRULY infinite!\n\nTry zooming out to see everything! 🔍",
+      "🔧 Tools (top toolbar)\n\n✋ Hand - Pan the canvas\n🔲 Select - Multi-select notes\n📝 Note - Create new notes\n\nSwitch tools to explore! →",
+      "🎯 Multi-Select Magic\n\n1. Click the Select tool (□)\n2. Drag a box around notes\n3. Or hold Shift + click notes\n\nSelected? Try grouping them! ⬇️",
+      "🤖 AI-Powered Grouping\n\nSelect 2+ notes, then click:\n'Group & Label' \n\nGemini AI will create a smart title for your cluster!\n\nMagic! ✨",
+      "💡 AI Brainstorm\n\n1. Click a note to select it\n2. Click the ✨ sparkle icon\n3. Gemini generates related ideas!\n\nThey spread around like a mind map 🧠",
+      "🔗 Share a Note\n\nSelect a note → Click the 🔗 icon\n\nCopies a direct link! Anyone clicking it will teleport to that exact note location.\n\nTry it! →",
+      "📦 Clusters = Smart Groups\n\nHover over a cluster to:\n• Edit the title\n• Change the color\n• Click X to ungroup\n\nOrganize your cosmic chaos! 🌈",
+      "⏳ Everything Fades...\n\nNotes disappear after π×10,000 seconds\n(that's 8h 43m in human time)\n\nFOMO = engagement! \nIdeas that matter, capture elsewhere 📸",
+      "🥧 Why π×10⁴ seconds?\n\nBecause cosmic order matters!\n\n31,415 seconds = a perfect mathematical cycle. Ideas flourish, then return to the void.\n\nEmbrace impermanence ✨"
+    ];
+
+    tutorialNotesContent.forEach((content, index) => {
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      
+      const noteX = (startX + BigInt(col) * spacing).toString();
+      const noteY = (startY + BigInt(row) * spacing).toString();
+      
+      createNote(noteX, noteY, content, true);
+    });
+
+    // Jump to tutorial area
+    setViewportCenter({ x: (startX + spacing).toString(), y: (startY + spacing).toString() });
+    setToast("Teleporting to Tutorial Area... 🎓");
+    setTimeout(() => setToast(null), 3000);
+  };
 
   const handleShare = (id: string) => {
     const note = notes.find(n => n.id === id);
@@ -746,11 +784,28 @@ const App: React.FC = () => {
 
   const handleGeminiExpand = async (id: string, text: string) => {
     if (!text || text.length < 3) return;
+    
+    // Check AI usage limit
+    if (!checkLimit()) {
+      setToast(`✨ AI limit reached! (${remainingCredits}/5 credits) - Upgrade for unlimited`);
+      setTimeout(() => setToast(null), 4000);
+      return;
+    }
+    
     setIsProcessingAI(true);
     const parentNote = notes.find(n => n.id === id);
-    if (!parentNote) return;
+    if (!parentNote) {
+      setIsProcessingAI(false);
+      return;
+    }
 
     const ideas = await brainstormNotes(text);
+    
+    // Only increment usage if we got results
+    if (ideas.length > 0) {
+      incrementUsage();
+    }
+    
     const parentX = BigInt(parentNote.x);
     const parentY = BigInt(parentNote.y);
     
@@ -873,8 +928,7 @@ const App: React.FC = () => {
         activeTool={activeTool} 
         onSelectTool={setActiveTool} 
         onReset={() => { setViewportCenter({ x: '0', y: '0' }); setScale(1); }}
-        toggleSimulation={() => setIsSimulating(!isSimulating)}
-        isSimulating={isSimulating}
+        onShowTutorial={handleShowTutorial}
         noteCount={notes.length}
       />
 
@@ -946,6 +1000,19 @@ const App: React.FC = () => {
             <WifiOff className="text-gray-400" size={16} />
             <span className="text-gray-600 font-medium">Local Mode</span>
           </>
+        )}
+      </div>
+
+      {/* AI Credits Indicator */}
+      <div className="fixed top-16 left-6 flex items-center gap-2 bg-white/80 backdrop-blur border border-gray-200 px-3 py-2 rounded-lg shadow-sm text-sm z-40">
+        <Sparkles className={isLimitReached ? 'text-gray-400' : 'text-purple-500'} size={16} />
+        <span className={isLimitReached ? 'text-gray-500' : 'text-purple-700'}>
+          {remainingCredits}/5 AI credits
+        </span>
+        {isLimitReached && (
+          <span className="text-xs text-orange-600 font-medium ml-1">
+            (resets tomorrow)
+          </span>
         )}
       </div>
 

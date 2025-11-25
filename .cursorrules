@@ -1,0 +1,108 @@
+# Ephemeral Infinity Board - Cursor Rules
+
+## Project Overview
+This is an ephemeral, multiplayer infinite whiteboard with AI-powered features.
+Notes have a cosmic lifespan of π×10,000 seconds (≈8.7 hours).
+
+## Tech Stack
+- **Frontend:** React 19, TypeScript, Vite
+- **Styling:** Tailwind CSS (utility-first, no external CSS files)
+- **Backend:** Vercel Serverless Functions (TypeScript)
+- **Database:** Supabase (PostgreSQL + Realtime)
+- **AI:** Google Gemini 2.0 Flash (via server-side proxy)
+- **Rate Limiting:** Upstash Redis (production) / In-memory (dev)
+
+## Code Style & Conventions
+
+### TypeScript
+- Always use TypeScript (.ts/.tsx) - never plain JavaScript
+- Define explicit types for function parameters and return values
+- Use interfaces for object shapes, types for unions/primitives
+- Avoid `any` - use `unknown` if type is truly unknown
+
+### React
+- Use functional components only (no class components)
+- Use React hooks (useState, useEffect, useCallback, useRef, useMemo)
+- Keep components small and focused (< 200 lines ideally)
+- Use React.memo() for performance-critical components
+- Props interfaces should be named `ComponentNameProps`
+
+### Styling
+- Use Tailwind CSS classes exclusively
+- No inline styles except for dynamic values (transforms, positions)
+- Follow existing color palette (note colors, cluster colors)
+- Use responsive classes when needed (sm:, md:, lg:)
+
+### File Structure
+```
+/api              - Vercel serverless functions
+/components       - React components
+/hooks            - Custom React hooks
+/services         - API clients and external services
+/utils            - Pure utility functions
+/types.ts         - Shared TypeScript types
+/App.tsx          - Main application component
+```
+
+## Safety Rules (CRITICAL)
+
+### Never Overwrite Without Permission
+- ALWAYS make a plan before modifying existing files
+- Use "Ask Mode" for complex changes - get approval first
+- Prefer small, incremental edits over large rewrites
+- When refactoring, explain what will change BEFORE doing it
+
+### Preserve Existing Functionality
+- Don't remove features without explicit request
+- Don't "clean up" or "improve" code that wasn't asked about
+- Don't change function signatures without updating all callers
+- Test changes mentally before applying
+
+### Git Workflow (MANDATORY)
+- At the END of every session, ALWAYS:
+  1. `git add .`
+  2. `git commit -m "descriptive message"`
+  3. `git push`
+- Never leave uncommitted changes
+- Use conventional commit messages (feat:, fix:, refactor:, docs:)
+
+## API & Environment Variables
+
+### Client-Side (VITE_ prefix required)
+- `VITE_SUPABASE_URL` - Supabase project URL
+- `VITE_SUPABASE_ANON_KEY` - Supabase anonymous key
+
+### Server-Side (Vercel Functions)
+- `GEMINI_API_KEY` - Google AI API key
+- `UPSTASH_REDIS_REST_URL` - Redis for rate limiting (optional)
+- `UPSTASH_REDIS_REST_TOKEN` - Redis token (optional)
+
+## Key Constants
+- `NOTE_LIFESPAN_MS = 31415000` (π×10,000 seconds)
+- Tutorial area coordinates: (10000, 10000)
+- AI daily limit: 5 requests per user (localStorage tracked)
+
+## Common Patterns
+
+### Creating Notes
+```typescript
+createNote(worldX: string, worldY: string, content: string, aiGenerated: boolean)
+```
+
+### BigInt Coordinates
+- World coordinates use BigInt stored as strings for infinite precision
+- Always use `BigInt()` for math, `.toString()` for storage
+
+### Toast Notifications
+```typescript
+setToast("Message here");
+setTimeout(() => setToast(null), 3000);
+```
+
+## What NOT To Do
+- Don't add console.log statements (use sparingly for debugging only)
+- Don't create new dependencies without discussion
+- Don't modify package.json scripts without approval
+- Don't change the database schema without a migration plan
+- Don't expose API keys in client-side code
+

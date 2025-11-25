@@ -1,13 +1,12 @@
 import React from 'react';
-import { Hand, MousePointer2, StickyNote, RefreshCw, Users } from 'lucide-react';
+import { Hand, MousePointer2, StickyNote, GraduationCap } from 'lucide-react';
 import { ToolType } from '../types';
 
 interface ToolbarProps {
   activeTool: ToolType;
   onSelectTool: (tool: ToolType) => void;
   onReset: () => void;
-  toggleSimulation: () => void;
-  isSimulating: boolean;
+  onShowTutorial: () => void;
   noteCount: number;
 }
 
@@ -15,8 +14,7 @@ const Toolbar: React.FC<ToolbarProps> = ({
   activeTool, 
   onSelectTool, 
   onReset,
-  toggleSimulation,
-  isSimulating,
+  onShowTutorial,
   noteCount
 }) => {
   const tools = [
@@ -53,15 +51,12 @@ const Toolbar: React.FC<ToolbarProps> = ({
 
       <div className="flex items-center gap-2">
          <button
-          onClick={toggleSimulation}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border ${
-            isSimulating 
-              ? 'bg-green-100 text-green-700 border-green-200' 
-              : 'bg-gray-50 text-gray-500 border-gray-200 hover:bg-gray-100'
-          }`}
+          onClick={onShowTutorial}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium transition-colors border bg-gray-50 text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200"
+          title="Show Tutorial Notes"
          >
-           <Users size={14} />
-           {isSimulating ? 'Live Mode' : 'Solo Mode'}
+           <GraduationCap size={14} />
+           Tutorial
          </button>
 
          <div className="text-xs text-gray-400 font-mono ml-2">
