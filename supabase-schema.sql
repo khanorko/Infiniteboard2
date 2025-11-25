@@ -13,9 +13,16 @@ CREATE TABLE IF NOT EXISTS notes (
   text TEXT NOT NULL DEFAULT '',
   color TEXT NOT NULL,
   rotation FLOAT NOT NULL DEFAULT 0,
+  width INTEGER NOT NULL DEFAULT 200,   -- Note width in pixels
+  height INTEGER NOT NULL DEFAULT 200,  -- Note height in pixels
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL
 );
+
+-- Migration: Add width/height columns to existing notes table
+-- Run this if you already have a notes table without these columns:
+-- ALTER TABLE notes ADD COLUMN IF NOT EXISTS width INTEGER NOT NULL DEFAULT 200;
+-- ALTER TABLE notes ADD COLUMN IF NOT EXISTS height INTEGER NOT NULL DEFAULT 200;
 
 -- Clusters table (groups of notes)
 CREATE TABLE IF NOT EXISTS clusters (

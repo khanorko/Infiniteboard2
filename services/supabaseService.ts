@@ -26,6 +26,8 @@ export interface DbNote {
   text: string;
   color: string;
   rotation: number;
+  width: number;
+  height: number;
   created_at: string;
   expires_at: string;
 }
@@ -38,6 +40,8 @@ function dbNoteToNote(dbNote: DbNote): Note {
     text: dbNote.text,
     color: dbNote.color,
     rotation: dbNote.rotation,
+    width: dbNote.width || 200,
+    height: dbNote.height || 200,
     createdAt: new Date(dbNote.created_at).getTime(),
     expiresAt: new Date(dbNote.expires_at).getTime(),
   };
@@ -52,6 +56,8 @@ function noteToDbNote(note: Note): Omit<DbNote, 'created_at'> {
     text: note.text,
     color: note.color,
     rotation: note.rotation,
+    width: note.width || 200,
+    height: note.height || 200,
     expires_at: new Date(note.expiresAt).toISOString(),
   };
 }
@@ -99,6 +105,8 @@ export async function updateNoteInDb(id: string, updates: Partial<Note>): Promis
   if (updates.text !== undefined) dbUpdates.text = updates.text;
   if (updates.x !== undefined) dbUpdates.x = updates.x;
   if (updates.y !== undefined) dbUpdates.y = updates.y;
+  if (updates.width !== undefined) dbUpdates.width = updates.width;
+  if (updates.height !== undefined) dbUpdates.height = updates.height;
 
   const { error } = await supabase
     .from('notes')
