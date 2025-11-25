@@ -87,7 +87,9 @@ const StickyNote: React.FC<StickyNoteProps> = ({
     onMouseDown(e, note.id);
   };
   
-  // Resize handlers
+  // Resize handlers - use ref to track current size during drag
+  const currentSizeRef = useRef({ width: localWidth, height: localHeight });
+  
   const handleResizeStart = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -98,6 +100,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
       width: localWidth,
       height: localHeight,
     };
+    currentSizeRef.current = { width: localWidth, height: localHeight };
     
     const handleResizeMove = (moveEvent: MouseEvent) => {
       if (!resizeStartRef.current) return;
@@ -108,14 +111,17 @@ const StickyNote: React.FC<StickyNoteProps> = ({
       const newWidth = Math.max(150, Math.min(400, resizeStartRef.current.width + deltaX));
       const newHeight = Math.max(150, Math.min(400, resizeStartRef.current.height + deltaY));
       
+      // Update both state and ref
       setLocalWidth(newWidth);
       setLocalHeight(newHeight);
+      currentSizeRef.current = { width: newWidth, height: newHeight };
     };
     
     const handleResizeEnd = () => {
       setIsResizing(false);
-      if (onResize && resizeStartRef.current) {
-        onResize(note.id, localWidth, localHeight);
+      if (onResize) {
+        // Read from ref to get the latest values
+        onResize(note.id, currentSizeRef.current.width, currentSizeRef.current.height);
       }
       resizeStartRef.current = null;
       window.removeEventListener('mousemove', handleResizeMove);
