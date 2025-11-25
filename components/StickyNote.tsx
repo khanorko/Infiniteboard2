@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Note, ToolType } from '../types';
-import { Trash2, Sparkles, Link } from 'lucide-react';
+import { Trash2, Sparkles, Link, GripHorizontal } from 'lucide-react';
 
 interface StickyNoteProps {
   note: Note;
@@ -12,6 +12,7 @@ interface StickyNoteProps {
   onUpdate: (id: string, text: string) => void;
   onDelete: (id: string) => void;
   onMouseDown: (e: React.MouseEvent, id: string) => void;
+  onResize?: (id: string, width: number, height: number) => void;
   onAIExpand?: (id: string, text: string) => void;
   onShare?: (id: string) => void;
 }
@@ -26,12 +27,25 @@ const StickyNote: React.FC<StickyNoteProps> = ({
   onUpdate,
   onDelete,
   onMouseDown,
+  onResize,
   onAIExpand,
   onShare
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [timeLeft, setTimeLeft] = useState(60);
   const [timeDisplay, setTimeDisplay] = useState('π×10⁴');
+  
+  // Resize state
+  const [isResizing, setIsResizing] = useState(false);
+  const [localWidth, setLocalWidth] = useState(note.width || 200);
+  const [localHeight, setLocalHeight] = useState(note.height || 200);
+  const resizeStartRef = useRef<{ x: number; y: number; width: number; height: number } | null>(null);
+  
+  // Sync local size with note props
+  useEffect(() => {
+    setLocalWidth(note.width || 200);
+    setLocalHeight(note.height || 200);
+  }, [note.width, note.height]);
 
   // Format time remaining into readable format
   const formatTime = (seconds: number): string => {
@@ -72,6 +86,45 @@ const StickyNote: React.FC<StickyNoteProps> = ({
     e.stopPropagation();
     onMouseDown(e, note.id);
   };
+  
+  // Resize handlers
+  const handleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setIsResizing(true);
+    resizeStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      width: localWidth,
+      height: localHeight,
+    };
+    
+    const handleResizeMove = (moveEvent: MouseEvent) => {
+      if (!resizeStartRef.current) return;
+      
+      const deltaX = (moveEvent.clientX - resizeStartRef.current.x) / scale;
+      const deltaY = (moveEvent.clientY - resizeStartRef.current.y) / scale;
+      
+      const newWidth = Math.max(150, Math.min(400, resizeStartRef.current.width + deltaX));
+      const newHeight = Math.max(150, Math.min(400, resizeStartRef.current.height + deltaY));
+      
+      setLocalWidth(newWidth);
+      setLocalHeight(newHeight);
+    };
+    
+    const handleResizeEnd = () => {
+      setIsResizing(false);
+      if (onResize && resizeStartRef.current) {
+        onResize(note.id, localWidth, localHeight);
+      }
+      resizeStartRef.current = null;
+      window.removeEventListener('mousemove', handleResizeMove);
+      window.removeEventListener('mouseup', handleResizeEnd);
+    };
+    
+    window.addEventListener('mousemove', handleResizeMove);
+    window.addEventListener('mouseup', handleResizeEnd);
+  }, [scale, localWidth, localHeight, note.id, onResize]);
 
   const isEditable = selected;
 
@@ -81,19 +134,19 @@ const StickyNote: React.FC<StickyNoteProps> = ({
       style={{
         transform: `translate(${screenX}px, ${screenY}px) rotate(${note.rotation}deg) scale(${scale})`,
         transformOrigin: 'top left',
-        width: '200px',
-        height: '200px',
+        width: `${localWidth}px`,
+        height: `${localHeight}px`,
         backgroundColor: 'transparent',
-        zIndex: selected ? 50 : 10,
+        zIndex: selected || isResizing ? 50 : 10,
         opacity: note.isFalling ? 0 : 1,
-        transition: note.isFalling ? 'none' : 'opacity 0.5s ease-out'
+        transition: note.isFalling ? 'none' : (isResizing ? 'none' : 'opacity 0.5s ease-out')
       }}
       onMouseDown={handleMouseDown}
     >
       <div 
-        className={`w-full h-full p-4 flex flex-col ${note.color} ${selected ? 'ring-4 ring-blue-500 shadow-2xl scale-[1.02]' : 'shadow-lg'}`}
+        className={`w-full h-full p-4 flex flex-col ${note.color} ${selected ? 'ring-4 ring-blue-500 shadow-2xl scale-[1.02]' : 'shadow-lg'} relative`}
         style={{
-          transition: 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+          transition: isResizing ? 'none' : 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
         }}
       >
         <div className="flex justify-between items-start mb-2 opacity-50 text-[10px] font-mono select-none">
@@ -138,6 +191,17 @@ const StickyNote: React.FC<StickyNoteProps> = ({
           spellCheck={false}
           style={{ pointerEvents: isEditable ? 'auto' : 'none' }} 
         />
+        
+        {/* Resize handle - only show when selected */}
+        {selected && onResize && (
+          <div
+            className="absolute bottom-1 right-1 w-5 h-5 cursor-se-resize flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
+            onMouseDown={handleResizeStart}
+            title="Drag to resize"
+          >
+            <GripHorizontal size={14} className="rotate-[-45deg] text-gray-600" />
+          </div>
+        )}
       </div>
       
       {/* Falling animation */}

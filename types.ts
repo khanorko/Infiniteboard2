@@ -15,6 +15,8 @@ export interface Note {
   createdAt: number;
   expiresAt: number;
   rotation: number;
+  width?: number;   // Optional, defaults to 200
+  height?: number;  // Optional, defaults to 200
   isFalling?: boolean;
 }
 
@@ -49,6 +51,11 @@ export const NOTE_COLORS = [
   'bg-note-green',
   'bg-note-pink',
   'bg-note-orange',
+  'bg-note-purple',
+  'bg-note-red',
+  'bg-note-teal',
+  'bg-note-lime',
+  'bg-note-gray',
 ];
 
 export const NOTE_LIFESPAN_MS = 31415000; // π × 10,000 seconds (≈8.7 hours)

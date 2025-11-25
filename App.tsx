@@ -803,6 +803,13 @@ const App: React.FC = () => {
     }
   };
 
+  const handleNoteResize = (id: string, width: number, height: number) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, width, height } : n));
+    broadcast('NOTE_UPDATE', { id, width, height });
+    // Note: Supabase schema would need width/height columns to persist this
+    // For now, resize is session-only unless you update the database schema
+  };
+
   const handleNoteDelete = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
     broadcast('NOTE_DELETE', id);
@@ -903,6 +910,7 @@ const App: React.FC = () => {
             selected={selectedNoteIds.has(note.id)}
             onUpdate={handleNoteUpdate}
             onDelete={handleNoteDelete}
+            onResize={handleNoteResize}
             onMouseDown={onNoteMouseDown}
             onAIExpand={handleGeminiExpand}
             onShare={handleShare}
