@@ -115,3 +115,4 @@ const FirstNoteScreen: React.FC<FirstNoteScreenProps> = ({ userColor, onCreateNo
 
 export default FirstNoteScreen;
 
+

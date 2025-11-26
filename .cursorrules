@@ -106,3 +106,4 @@ setTimeout(() => setToast(null), 3000);
 - Don't change the database schema without a migration plan
 - Don't expose API keys in client-side code
 
+

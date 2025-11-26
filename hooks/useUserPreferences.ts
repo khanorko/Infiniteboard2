@@ -55,8 +55,25 @@ export const useUserPreferences = () => {
     sessionStorage.setItem(STORAGE_KEYS.onboardingComplete, 'true');
   }, []);
 
-  // Determine if onboarding should show
-  const shouldShowOnboarding = isLoaded && !skipOnboarding && !onboardingComplete;
+  // Check if URL has shared coordinates (skip onboarding for direct links)
+  const hasSharedCoordinates = useCallback(() => {
+    const params = new URLSearchParams(window.location.search);
+    const x = params.get('x');
+    const y = params.get('y');
+    if (x && y) {
+      try {
+        BigInt(x);
+        BigInt(y);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }, []);
+
+  // Determine if onboarding should show (skip if URL has shared coordinates)
+  const shouldShowOnboarding = isLoaded && !skipOnboarding && !onboardingComplete && !hasSharedCoordinates();
 
   return {
     userName,
@@ -71,4 +88,5 @@ export const useUserPreferences = () => {
     completeOnboarding,
   };
 };
+
 
