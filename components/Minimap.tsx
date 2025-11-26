@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Navigation, Plus, Minus, Infinity } from 'lucide-react';
+import { Navigation, Plus, Minus, Infinity, Star, Trash2, MapPin } from 'lucide-react';
+import { useSavedPlaces } from '../hooks/useSavedPlaces';
 
 interface MinimapProps {
   centerX: string;  // Viewport center as BigInt string
@@ -13,6 +14,12 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
   const [targetX, setTargetX] = useState<string>('0');
   const [targetY, setTargetY] = useState<string>('0');
   const [error, setError] = useState<string | null>(null);
+  
+  // Saved places
+  const { savedPlaces, addPlace, removePlace } = useSavedPlaces();
+  const [isAddingPlace, setIsAddingPlace] = useState(false);
+  const [newPlaceName, setNewPlaceName] = useState('');
+  const [showSavedPlaces, setShowSavedPlaces] = useState(true);
 
   const handleGo = () => {
     setError(null);
@@ -30,6 +37,21 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
     if (e.key === 'Enter') {
       handleGo();
     }
+  };
+
+  const handleSavePlace = () => {
+    if (isAddingPlace) {
+      addPlace(newPlaceName || 'My Place', centerX, centerY);
+      setNewPlaceName('');
+      setIsAddingPlace(false);
+    } else {
+      setIsAddingPlace(true);
+    }
+  };
+
+  const handleCancelAdd = () => {
+    setNewPlaceName('');
+    setIsAddingPlace(false);
   };
 
   // Filter input to only allow digits and minus sign
@@ -52,10 +74,22 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
 
   // Format large numbers for display (abbreviate if too long)
   const formatCoord = (coord: string) => {
-    if (coord.length <= 16) return coord;
+    if (coord.length <= 12) return coord;
     const isNegative = coord.startsWith('-');
     const absCoord = isNegative ? coord.slice(1) : coord;
-    return `${isNegative ? '-' : ''}${absCoord.slice(0, 6)}...${absCoord.slice(-6)}`;
+    return `${isNegative ? '-' : ''}${absCoord.slice(0, 4)}...${absCoord.slice(-4)}`;
+  };
+
+  // Format coordinates for saved place display
+  const formatPlaceCoords = (x: string, y: string) => {
+    const formatNum = (n: string) => {
+      const num = parseInt(n);
+      if (Math.abs(num) >= 1000) {
+        return `${(num / 1000).toFixed(1)}k`;
+      }
+      return n;
+    };
+    return `${formatNum(x)}, ${formatNum(y)}`;
   };
 
   return (
@@ -136,8 +170,101 @@ const Minimap: React.FC<MinimapProps> = ({ centerX, centerY, scale, onMoveTo, on
         {error && (
           <p className="text-xs text-red-400 mt-1">{error}</p>
         )}
+
+        {/* Divider */}
+        <div className="border-t border-white/10 my-3" />
+
+        {/* Saved Places Section */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <button 
+              onClick={() => setShowSavedPlaces(!showSavedPlaces)}
+              className="font-semibold text-white/80 text-sm flex items-center gap-2 hover:text-white transition-colors"
+            >
+              <Star size={14} className="text-yellow-400" />
+              Saved Places
+              <span className="text-white/40 text-xs">({savedPlaces.length})</span>
+            </button>
+          </div>
+
+          {showSavedPlaces && (
+            <>
+              {/* Add Place Form */}
+              {isAddingPlace ? (
+                <div className="flex gap-2 mb-2">
+                  <input
+                    type="text"
+                    value={newPlaceName}
+                    onChange={(e) => setNewPlaceName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleSavePlace();
+                      if (e.key === 'Escape') handleCancelAdd();
+                    }}
+                    className="flex-1 bg-white/5 border border-yellow-500/30 rounded px-2 py-1 text-sm text-white/90 placeholder:text-white/30 focus:ring-2 focus:ring-yellow-500/50 focus:border-yellow-500/50 outline-none"
+                    placeholder="Name this place..."
+                    autoFocus
+                  />
+                  <button
+                    onClick={handleSavePlace}
+                    className="bg-yellow-500/80 text-black px-2 py-1 rounded text-xs font-medium hover:bg-yellow-400 transition-colors"
+                  >
+                    Save
+                  </button>
+                  <button
+                    onClick={handleCancelAdd}
+                    className="text-white/50 hover:text-white/80 px-1"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={handleSavePlace}
+                  className="w-full flex items-center justify-center gap-2 py-1.5 mb-2 text-xs text-yellow-400/80 hover:text-yellow-400 hover:bg-yellow-500/10 rounded border border-dashed border-yellow-500/30 transition-colors"
+                >
+                  <Plus size={12} />
+                  Save current location
+                </button>
+              )}
+
+              {/* Saved Places List */}
+              {savedPlaces.length > 0 ? (
+                <div className="space-y-1 max-h-32 overflow-y-auto">
+                  {savedPlaces.map((place) => (
+                    <div
+                      key={place.id}
+                      className="group flex items-center gap-2 p-1.5 rounded hover:bg-white/5 transition-colors"
+                    >
+                      <button
+                        onClick={() => onMoveTo(place.x, place.y)}
+                        className="flex-1 flex items-center gap-2 text-left"
+                      >
+                        <MapPin size={12} className="text-yellow-400/70 shrink-0" />
+                        <span className="text-sm text-white/80 truncate">{place.name}</span>
+                        <span className="text-xs text-white/30 font-mono shrink-0">
+                          {formatPlaceCoords(place.x, place.y)}
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => removePlace(place.id)}
+                        className="opacity-0 group-hover:opacity-100 p-1 text-white/30 hover:text-red-400 transition-all"
+                        title="Delete"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-white/30 text-center py-2">
+                  No saved places yet
+                </p>
+              )}
+            </>
+          )}
+        </div>
         
-        <p className="text-xs text-white/40 mt-2 flex items-center gap-1">
+        <p className="text-xs text-white/40 mt-3 flex items-center gap-1">
           <Infinity size={12} className="text-blue-400" />
           Truly infinite coordinates!
         </p>
