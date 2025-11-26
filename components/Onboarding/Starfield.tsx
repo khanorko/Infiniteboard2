@@ -8,6 +8,8 @@ interface StarfieldProps {
   mode?: 'onboarding' | 'board';
   parallaxOffsetX?: number;
   parallaxOffsetY?: number;
+  // Motion burst ref for zoom/teleport feedback
+  triggerBurstRef?: React.MutableRefObject<((intensity: number, duration?: number) => void) | null>;
 }
 
 const Starfield: React.FC<StarfieldProps> = ({ 
@@ -16,6 +18,7 @@ const Starfield: React.FC<StarfieldProps> = ({
   mode = 'onboarding',
   parallaxOffsetX = 0,
   parallaxOffsetY = 0,
+  triggerBurstRef,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -174,6 +177,35 @@ const Starfield: React.FC<StarfieldProps> = ({
       material.dispose();
     };
   }, [mode]);
+
+  // Expose triggerBurst function for zoom/teleport feedback
+  useEffect(() => {
+    if (triggerBurstRef) {
+      triggerBurstRef.current = (intensity: number, duration = 300) => {
+        const baseSpeed = mode === 'board' ? 0.05 : 0.5;
+        speedRef.current = baseSpeed + intensity;
+        
+        // Ease back to normal after duration
+        setTimeout(() => {
+          const ease = () => {
+            speedRef.current *= 0.85;
+            if (Math.abs(speedRef.current - baseSpeed) > 0.01) {
+              requestAnimationFrame(ease);
+            } else {
+              speedRef.current = baseSpeed;
+            }
+          };
+          ease();
+        }, duration);
+      };
+    }
+    
+    return () => {
+      if (triggerBurstRef) {
+        triggerBurstRef.current = null;
+      }
+    };
+  }, [mode, triggerBurstRef]);
 
   // Handle warp effect
   useEffect(() => {

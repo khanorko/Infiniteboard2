@@ -102,6 +102,9 @@ const App: React.FC = () => {
   const movedNotesDelta = useRef<{ ids: string[], dx: bigint, dy: bigint } | null>(null);
   const updateTimers = useRef<Record<string, NodeJS.Timeout>>({});
   const activelyEditingNotes = useRef<Set<string>>(new Set());
+  
+  // Starfield motion burst for zoom/teleport feedback
+  const starfieldBurstRef = useRef<((intensity: number, duration?: number) => void) | null>(null);
 
   // --- BigInt Helpers ---
   const centerBig = parseBigPoint(viewportCenter.x, viewportCenter.y);
@@ -248,6 +251,11 @@ const App: React.FC = () => {
         BigInt(x);
         BigInt(y);
         setViewportCenter({ x, y });
+        
+        // Trigger arrival burst after starfield mounts
+        setTimeout(() => {
+          starfieldBurstRef.current?.(3, 400);
+        }, 100);
       } catch {
         // Invalid coordinates, ignore
       }
@@ -550,6 +558,7 @@ const App: React.FC = () => {
 
     // Jump to tutorial area
     setViewportCenter({ x: (startX + spacing).toString(), y: (startY + spacing).toString() });
+    starfieldBurstRef.current?.(5, 200); // Teleport burst
     setToast("Teleporting to Tutorial Area... 🎓");
     setTimeout(() => setToast(null), 3000);
   };
@@ -567,6 +576,7 @@ const App: React.FC = () => {
     
     // Set the viewport to the new location
     setViewportCenter({ x: newX, y: newY });
+    starfieldBurstRef.current?.(8, 300); // Big random teleport burst
     
     // Create shareable URL
     const url = new URL(window.location.origin);
@@ -719,6 +729,9 @@ const App: React.FC = () => {
     // Keep viewport centered on target
     setScale(newScale);
     setViewportCenter({ x: targetWorldX.toString(), y: targetWorldY.toString() });
+    
+    // Star burst feedback for zoom
+    starfieldBurstRef.current?.(delta > 0 ? 2 : -1, 300);
   };
 
   const handleWheel = (e: React.WheelEvent) => {
@@ -1059,6 +1072,7 @@ const App: React.FC = () => {
         mode="board" 
         parallaxOffsetX={parallaxX}
         parallaxOffsetY={parallaxY}
+        triggerBurstRef={starfieldBurstRef}
       />
       
       <div 
@@ -1189,7 +1203,11 @@ const App: React.FC = () => {
       <Toolbar 
         activeTool={activeTool} 
         onSelectTool={setActiveTool} 
-        onReset={() => { setViewportCenter({ x: '0', y: '0' }); setScale(1); }}
+        onReset={() => { 
+          setViewportCenter({ x: '0', y: '0' }); 
+          setScale(1); 
+          starfieldBurstRef.current?.(5, 200); // Reset to origin burst
+        }}
         onShowTutorial={handleShowTutorial}
         onRandomLocation={handleRandomLocation}
         noteCount={notes.length}
@@ -1201,6 +1219,7 @@ const App: React.FC = () => {
         scale={scale} 
         onMoveTo={(x, y) => {
           setViewportCenter({ x, y });
+          starfieldBurstRef.current?.(5, 200); // Navigator/Saved Places teleport burst
         }}
         onZoom={handleZoomBtn}
       />
