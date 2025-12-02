@@ -7,6 +7,7 @@ import Minimap from './components/Minimap';
 import Onboarding from './components/Onboarding/Onboarding';
 import Starfield from './components/Onboarding/Starfield';
 import TutorialPopovers from './components/TutorialPopovers';
+import MobileNoteView from './components/MobileNoteView';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
 import { useUserPreferences } from './hooks/useUserPreferences';
@@ -67,6 +68,12 @@ const App: React.FC = () => {
   const [isEnteringBoard, setIsEnteringBoard] = useState(false);
   const [showWelcomeText, setShowWelcomeText] = useState(false);
   const [firstNoteId, setFirstNoteId] = useState<string | null>(null);
+  
+  // Mobile view state
+  const [isMobile, setIsMobile] = useState(false);
+  const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null);
+  const [mobileZoom, setMobileZoom] = useState(1.0);
+  const [showMobileView, setShowMobileView] = useState(true); // Control mobile view visibility
   
   // --- State ---
   const [notes, setNotes] = useState<Note[]>([]);
@@ -161,9 +168,34 @@ const App: React.FC = () => {
     if (!aiGenerated) {
       setSelectedNoteIds(new Set([newNote.id]));
     }
-  }, [userColor]);
+    
+    // On mobile, set as focused
+    if (isMobile) {
+      setFocusedNoteId(newNote.id);
+      setMobileZoom(1.0);
+    }
+  }, [userColor, isMobile]);
 
   // --- Effects ---
+
+  // Device detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  // Initialize focused note on mobile when notes load
+  useEffect(() => {
+    if (isMobile && notes.length > 0 && !focusedNoteId && showMobileView) {
+      // Set first note as focused, or note closest to viewport center
+      setFocusedNoteId(notes[0].id);
+      setMobileZoom(1.0);
+    }
+  }, [isMobile, notes, focusedNoteId, showMobileView]);
 
   // 0. Load data from Supabase (if configured) or localStorage
   useEffect(() => {
@@ -1052,6 +1084,27 @@ const App: React.FC = () => {
         skipOnboarding={skipOnboarding}
         onSkipChange={setSkipOnboarding}
         onComplete={handleOnboardingComplete}
+      />
+    );
+  }
+
+  // Mobile view - activate when mobile and showMobileView is true
+  if (isMobile && showMobileView) {
+    return (
+      <MobileNoteView
+        focusedNoteId={focusedNoteId}
+        zoomLevel={mobileZoom}
+        notes={notes}
+        clusters={clusters}
+        onNoteChange={setFocusedNoteId}
+        onZoomChange={setMobileZoom}
+        onCreateNote={createNote}
+        onNoteUpdate={handleNoteUpdate}
+        onNoteDelete={handleNoteDelete}
+        onNoteResize={handleNoteResize}
+        viewportCenter={viewportCenter}
+        onViewportChange={setViewportCenter}
+        onExit={() => setShowMobileView(false)}
       />
     );
   }
