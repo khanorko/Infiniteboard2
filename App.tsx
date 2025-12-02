@@ -69,8 +69,8 @@ const App: React.FC = () => {
   const [showWelcomeText, setShowWelcomeText] = useState(false);
   const [firstNoteId, setFirstNoteId] = useState<string | null>(null);
   
-  // Mobile view state
-  const [isMobile, setIsMobile] = useState(false);
+  // Mobile view state - initialize based on current viewport
+  const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null);
   const [mobileZoom, setMobileZoom] = useState(1.0);
   const [showMobileView, setShowMobileView] = useState(true); // Control mobile view visibility
