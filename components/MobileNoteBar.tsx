@@ -7,13 +7,13 @@ interface MobileNoteBarProps {
   onNoteSelect: (noteId: string) => void;
 }
 
-const MobileNoteBar: React.FC<MobileNoteBarProps> = ({ notes, focusedNoteId, onNoteSelect }) => {
+const MobileNoteBar: React.FC<MobileNoteBarProps> = ({ notes = [], focusedNoteId, onNoteSelect }) => {
   const getFirstLine = (text: string): string => {
     const firstLine = text.split('\n')[0];
     return firstLine.length > 30 ? firstLine.substring(0, 30) + '...' : firstLine;
   };
 
-  if (notes.length === 0) return null;
+  if (!notes || notes.length === 0) return null;
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-50 bg-gray-900/95 backdrop-blur-xl border-t border-white/10 px-4 py-3">

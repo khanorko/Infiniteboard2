@@ -26,8 +26,8 @@ interface MobileNoteViewProps {
 const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   focusedNoteId,
   zoomLevel,
-  notes,
-  clusters,
+  notes = [],
+  clusters = [],
   onNoteChange,
   onZoomChange,
   onCreateNote,
