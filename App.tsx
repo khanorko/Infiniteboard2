@@ -181,19 +181,27 @@ const App: React.FC = () => {
   // Device detection - activate mobile view when viewport is narrow (< 768px)
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      const newIsMobile = window.innerWidth < 768;
+      setIsMobile(newIsMobile);
+      
+      // When switching from desktop to mobile, re-enable mobile view
+      if (newIsMobile && !isMobile) {
+        setShowMobileView(true);
+      }
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, []);
+  }, [isMobile]);
 
-  // Initialize focused note on mobile when notes load
+  // Initialize focused note on mobile when notes load or when switching to mobile
   useEffect(() => {
-    if (isMobile && notes.length > 0 && !focusedNoteId && showMobileView) {
-      // Set first note as focused, or note closest to viewport center
-      setFocusedNoteId(notes[0].id);
-      setMobileZoom(1.0);
+    if (isMobile && showMobileView) {
+      if (notes.length > 0 && !focusedNoteId) {
+        // Set first note as focused when switching to mobile view
+        setFocusedNoteId(notes[0].id);
+        setMobileZoom(1.0);
+      }
     }
   }, [isMobile, notes, focusedNoteId, showMobileView]);
 
