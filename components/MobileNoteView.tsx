@@ -139,9 +139,9 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     if (notes.length > 0 && !focusedNoteId) {
       // Set first note as focused
       onNoteChange(notes[0].id);
-      setMobileZoom(1.0);
+      onZoomChange(1.0);
     }
-  }, [notes, focusedNoteId, onNoteChange]);
+  }, [notes, focusedNoteId, onNoteChange, onZoomChange]);
 
   // Reset swipe count when zoom changes
   useEffect(() => {
