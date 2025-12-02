@@ -178,10 +178,10 @@ const App: React.FC = () => {
 
   // --- Effects ---
 
-  // Device detection
+  // Device detection - activate mobile view when viewport is narrow (< 768px)
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768 || 'ontouchstart' in window);
+      setIsMobile(window.innerWidth < 768);
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
