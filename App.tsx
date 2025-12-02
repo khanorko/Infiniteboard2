@@ -594,22 +594,17 @@ const App: React.FC = () => {
   };
 
   // --- Onboarding Complete Handler ---
-  const handleOnboardingComplete = useCallback((data: { userName: string; userColor: string; firstNoteText: string }) => {
+  const handleOnboardingComplete = useCallback((data: { userName: string; userColor: string; firstNoteText: string; startCoordinates: { x: string; y: string } }) => {
     // Save user preferences
     setUserName(data.userName);
     setUserColor(data.userColor);
     completeOnboarding();
     
-    // Generate random start location far from origin (15000-25000 in random direction)
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 15000 + Math.random() * 10000;
-    const startX = Math.round(Math.cos(angle) * distance);
-    const startY = Math.round(Math.sin(angle) * distance);
-    
+    // Use coordinates from onboarding
     // Start camera entry animation
     setIsEnteringBoard(true);
     setScale(0.3); // Start zoomed out
-    setViewportCenter({ x: startX.toString(), y: startY.toString() });
+    setViewportCenter({ x: data.startCoordinates.x, y: data.startCoordinates.y });
     
     // After a brief moment, start the zoom-in and show welcome text
     setTimeout(() => {
@@ -635,8 +630,8 @@ const App: React.FC = () => {
           const noteId = crypto.randomUUID();
           const newNote: Note = {
             id: noteId,
-            x: startX.toString(),
-            y: startY.toString(),
+            x: data.startCoordinates.x,
+            y: data.startCoordinates.y,
             text: data.firstNoteText,
             color: data.userColor,
             createdAt: Date.now(),

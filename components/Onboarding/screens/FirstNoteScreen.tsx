@@ -52,8 +52,12 @@ const FirstNoteScreen: React.FC<FirstNoteScreenProps> = ({ userColor, onCreateNo
               What are you working on today?
             </h2>
             
-            <p className="text-white/40 text-sm mb-6">
+            <p className="text-white/40 text-sm mb-4">
               Write a short note to start your journey.
+            </p>
+
+            <p className="text-white/30 text-xs mb-6 italic font-light animate-fade-in">
+              Ideas appear, drift, and fade. That's the beauty.
             </p>
 
             <textarea
@@ -114,5 +118,8 @@ const FirstNoteScreen: React.FC<FirstNoteScreenProps> = ({ userColor, onCreateNo
 };
 
 export default FirstNoteScreen;
+
+
+
 
 

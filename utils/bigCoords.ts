@@ -110,3 +110,22 @@ export function getBigBoundingCenter(
   };
 }
 
+/**
+ * Format coordinate as "Sector X +432 000 000 000" with spaces every 3 digits
+ */
+export function formatSectorCoord(coord: string): string {
+  try {
+    const num = BigInt(coord);
+    const sign = num < 0n ? '–' : '+';
+    const abs = num < 0n ? -num : num;
+    const str = abs.toString();
+    
+    // Add spaces every 3 digits from right to left
+    const formatted = str.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    
+    return `${sign}${formatted}`;
+  } catch {
+    return '+0';
+  }
+}
+
