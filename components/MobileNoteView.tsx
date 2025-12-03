@@ -113,7 +113,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
       onZoomChange(1.0);
       setSwipeDownCount(0);
     }
-  }, [isFullscreen, swipeDownCount, onZoomChange, onNoteChange]);
+  }, [isFullscreen, swipeDownCount, onZoomChange, onExit]);
 
   const handleDoubleTap = useCallback((x: number, y: number) => {
     const worldPos = screenToWorld(x, y);
