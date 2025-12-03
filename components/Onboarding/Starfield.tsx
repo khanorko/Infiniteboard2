@@ -87,7 +87,7 @@ const Starfield: React.FC<StarfieldProps> = ({
       const basePositions = new Float32Array(starCount * 3); // Store initial positions for parallax
 
       for (let i = 0; i < starCount; i++) {
-      const i3 = i * 3;
+        const i3 = i * 3;
       // Spread stars in a cylinder around the camera
       const radius = Math.random() * 800 + 100;
       const theta = Math.random() * Math.PI * 2;
