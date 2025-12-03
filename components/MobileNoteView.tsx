@@ -40,7 +40,21 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
 }) => {
   const [swipeDownCount, setSwipeDownCount] = useState(0);
   const focusedNote = notes.find(n => n.id === focusedNoteId);
-  const centerBig = parseBigPoint(viewportCenter.x, viewportCenter.y);
+  
+  // Ensure viewportCenter has valid values
+  const safeViewportCenter = {
+    x: viewportCenter?.x || '0',
+    y: viewportCenter?.y || '0'
+  };
+  
+  let centerBig;
+  try {
+    centerBig = parseBigPoint(safeViewportCenter.x, safeViewportCenter.y);
+  } catch (error) {
+    console.error('Error parsing viewport center:', error);
+    centerBig = { x: 0n, y: 0n };
+  }
+  
   const isFullscreen = zoomLevel >= 1.0;
 
   // Convert world position to screen position
@@ -150,13 +164,19 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     }
   }, [zoomLevel]);
 
-  // Calculate parallax offset for stars
-  const parallaxX = Number(centerBig.x % 10000n);
-  const parallaxY = Number(centerBig.y % 10000n);
+  // Calculate parallax offset for stars (with error handling)
+  let parallaxX = 0;
+  let parallaxY = 0;
+  try {
+    parallaxX = Number(centerBig.x % 10000n);
+    parallaxY = Number(centerBig.y % 10000n);
+  } catch (error) {
+    console.error('Error calculating parallax:', error);
+  }
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      {/* Starfield Background */}
+    <div className="fixed inset-0 z-50 overflow-hidden bg-[#0a0a0f]">
+      {/* Starfield Background with error boundary */}
       <Starfield 
         mode="board" 
         parallaxOffsetX={parallaxX}

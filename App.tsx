@@ -1083,20 +1083,13 @@ const App: React.FC = () => {
     );
   }
 
-  // Show onboarding if not completed
-  if (shouldShowOnboarding) {
-    return (
-      <Onboarding
-        initialUserName={userName}
-        initialUserColor={userColor}
-        skipOnboarding={skipOnboarding}
-        onSkipChange={setSkipOnboarding}
-        onComplete={handleOnboardingComplete}
-      />
-    );
+  // Wait for preferences to load before rendering
+  if (!prefsLoaded) {
+    return null; // Or a loading spinner
   }
 
   // Mobile view - activate when mobile and showMobileView is true
+  // On mobile, skip onboarding and go straight to mobile view
   if (isMobile && showMobileView) {
     return (
       <MobileNoteView
@@ -1113,6 +1106,19 @@ const App: React.FC = () => {
         viewportCenter={viewportCenter}
         onViewportChange={setViewportCenter}
         onExit={() => setShowMobileView(false)}
+      />
+    );
+  }
+
+  // Show onboarding if not completed (only on desktop)
+  if (shouldShowOnboarding) {
+    return (
+      <Onboarding
+        initialUserName={userName}
+        initialUserColor={userColor}
+        skipOnboarding={skipOnboarding}
+        onSkipChange={setSkipOnboarding}
+        onComplete={handleOnboardingComplete}
       />
     );
   }
