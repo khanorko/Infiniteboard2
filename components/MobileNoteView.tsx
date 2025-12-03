@@ -125,13 +125,21 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     onZoomChange(newZoom);
   }, [zoomLevel, onZoomChange]);
   
-  // Zoom button handlers
-  const handleZoomIn = useCallback(() => {
+  // Zoom button handlers - prevent note selection when zooming
+  const handleZoomIn = useCallback((e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     const newZoom = Math.min(3.0, zoomLevel + 0.1);
     onZoomChange(newZoom);
   }, [zoomLevel, onZoomChange]);
   
-  const handleZoomOut = useCallback(() => {
+  const handleZoomOut = useCallback((e?: React.SyntheticEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
     const newZoom = Math.max(0.05, zoomLevel - 0.1);
     onZoomChange(newZoom);
   }, [zoomLevel, onZoomChange]);
@@ -402,28 +410,40 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         )}
         
         {/* Zoom Buttons - Bottom right */}
-        <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
+        <div 
+          className="fixed bottom-20 right-4 z-40 flex flex-col gap-2" 
+          onClick={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <div className="bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 flex flex-col overflow-hidden">
             <button 
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                handleZoomIn();
+                handleZoomIn(e);
               }}
               onTouchStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+              onTouchMove={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
               }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                handleZoomIn();
+                handleZoomIn(e);
               }}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
               }}
-              className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
+              className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto touch-none"
+              style={{ touchAction: 'manipulation' }}
             >
               <Plus size={20} />
             </button>
@@ -431,22 +451,27 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                handleZoomOut();
+                handleZoomOut(e);
               }}
               onTouchStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
+              onTouchMove={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
               }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
-                handleZoomOut();
+                handleZoomOut(e);
               }}
               onMouseDown={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
               }}
-              className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
+              className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto touch-none"
+              style={{ touchAction: 'manipulation' }}
             >
               <Minus size={20} />
             </button>

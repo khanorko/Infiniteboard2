@@ -2,8 +2,6 @@ import { useRef, useCallback } from 'react';
 
 interface GestureCallbacks {
   onPinch?: (scale: number, centerX: number, centerY: number) => void;
-  onSwipeUp?: () => void;
-  onSwipeDown?: () => void;
   onDoubleTap?: (x: number, y: number) => void;
   onPan?: (dx: number, dy: number) => void;
 }
@@ -95,22 +93,8 @@ export const useMobileGestures = (callbacks: GestureCallbacks) => {
       } else if (distance < 10 && time < 300) {
         // Single tap - store for potential double tap
         lastTapRef.current = Date.now();
-      } else if (distance > 50 && time < 300 && !isPanningRef.current) {
-        // Swipe gesture
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
-        
-        if (absDy > absDx) {
-          // Vertical swipe
-          if (dy < 0) {
-            // Swipe up
-            callbacks.onSwipeUp?.();
-          } else {
-            // Swipe down
-            callbacks.onSwipeDown?.();
-          }
-        }
       }
+      // Swipe gestures removed - no longer needed
     }
     
     // Reset
