@@ -182,22 +182,34 @@ const App: React.FC = () => {
   useEffect(() => {
     const checkMobile = () => {
       const newIsMobile = window.innerWidth < 768;
+      const wasMobile = isMobile;
       setIsMobile(newIsMobile);
       
-      // When switching from desktop to mobile, re-enable mobile view
-      if (newIsMobile && !isMobile) {
+      // When switching from desktop to mobile, always enable mobile view
+      if (newIsMobile && !wasMobile) {
         setShowMobileView(true);
+        // Preserve focusedNoteId if valid, otherwise set first note
+        if (notes.length > 0) {
+          if (focusedNoteId && notes.find(n => n.id === focusedNoteId)) {
+            // Keep current focused note
+            setMobileZoom(1.0);
+          } else {
+            // Set first note as focused
+            setFocusedNoteId(notes[0].id);
+            setMobileZoom(1.0);
+          }
+        }
       }
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [isMobile]);
+  }, [isMobile, notes, focusedNoteId]);
 
   // Initialize focused note on mobile when notes load or when switching to mobile
   useEffect(() => {
     if (isMobile && showMobileView) {
-      if (notes.length > 0 && !focusedNoteId) {
+      if (notes.length > 0) {
         // Check for note ID in URL (for shared links)
         const urlParams = new URLSearchParams(window.location.search);
         const noteId = urlParams.get('note');
@@ -216,9 +228,11 @@ const App: React.FC = () => {
           }
         }
         
-        // No note ID in URL, set first note as focused
-        setFocusedNoteId(notes[0].id);
-        setMobileZoom(1.0);
+        // If no focused note or focused note doesn't exist, set first note
+        if (!focusedNoteId || !notes.find(n => n.id === focusedNoteId)) {
+          setFocusedNoteId(notes[0].id);
+          setMobileZoom(1.0);
+        }
       }
     }
   }, [isMobile, notes, focusedNoteId, showMobileView]);
@@ -1124,6 +1138,15 @@ const App: React.FC = () => {
         viewportCenter={viewportCenter}
         onViewportChange={setViewportCenter}
         onExit={() => setShowMobileView(false)}
+        onShowTutorial={handleShowTutorial}
+        onRandomLocation={handleRandomLocation}
+        onReset={() => { 
+          setViewportCenter({ x: '0', y: '0' }); 
+          setMobileZoom(1.0);
+          starfieldBurstRef.current?.(5, 200);
+        }}
+        onShare={handleShare}
+        onAIExpand={handleGeminiExpand}
       />
     );
   }

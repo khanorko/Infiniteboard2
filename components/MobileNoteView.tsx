@@ -1,7 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Note, Cluster } from '../types';
 import StickyNote from './StickyNote';
-import MobileNoteBar from './MobileNoteBar';
 import Starfield from './Onboarding/Starfield';
 import { useMobileGestures } from '../hooks/useMobileGestures';
 import { parseBigPoint, getRelativeOffset, BigPoint, formatSectorCoord } from '../utils/bigCoords';
@@ -26,6 +25,8 @@ interface MobileNoteViewProps {
   onShowTutorial?: () => void;
   onRandomLocation?: () => void;
   onReset?: () => void;
+  onShare?: (id: string) => void;
+  onAIExpand?: (id: string, text: string) => void;
 }
 
 const MobileNoteView: React.FC<MobileNoteViewProps> = ({
@@ -45,8 +46,9 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   onShowTutorial,
   onRandomLocation,
   onReset,
+  onShare,
+  onAIExpand,
 }) => {
-  const [isControlsVisible, setIsControlsVisible] = useState(false);
   const [showNavigator, setShowNavigator] = useState(false);
   const [targetX, setTargetX] = useState<string>('0');
   const [targetY, setTargetY] = useState<string>('0');
@@ -54,7 +56,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   const [isAddingPlace, setIsAddingPlace] = useState(false);
   const [newPlaceName, setNewPlaceName] = useState('');
   const [showSavedPlaces, setShowSavedPlaces] = useState(true);
-  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const focusedNote = notes.find(n => n.id === focusedNoteId);
   const { savedPlaces, addPlace, removePlace } = useSavedPlaces();
   
@@ -218,35 +219,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     }
   }, [isFullscreen, zoomLevel, centerBig, onViewportChange]);
 
-  // Handle note tap to show/hide controls
-  const handleNoteTap = useCallback(() => {
-    setIsControlsVisible(true);
-    // Clear existing timeout
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-    // Auto-hide after 4 seconds
-    controlsTimeoutRef.current = setTimeout(() => {
-      setIsControlsVisible(false);
-    }, 4000);
-  }, []);
-
-  // Cleanup timeout on unmount
-  useEffect(() => {
-    return () => {
-      if (controlsTimeoutRef.current) {
-        clearTimeout(controlsTimeoutRef.current);
-      }
-    };
-  }, []);
-
-  // Hide controls when note changes
-  useEffect(() => {
-    setIsControlsVisible(false);
-    if (controlsTimeoutRef.current) {
-      clearTimeout(controlsTimeoutRef.current);
-    }
-  }, [focusedNoteId]);
 
   const gestures = useMobileGestures({
     onPinch: handlePinch,
@@ -321,8 +293,9 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                   onResize={onNoteResize}
                   onMouseDown={() => {}}
                   distanceOpacity={1}
-                  showControls={isControlsVisible}
-                  onTap={handleNoteTap}
+                  showControls={true}
+                  onShare={onShare}
+                  onAIExpand={onAIExpand}
                 />
               </div>
             </div>
@@ -378,15 +351,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                 </div>
               );
             })}
-            
-            {/* Note bar at bottom - only show when zoomed out */}
-            {zoomLevel < 1.0 && (
-              <MobileNoteBar
-                notes={notes}
-                focusedNoteId={focusedNoteId}
-                onNoteSelect={onNoteChange}
-              />
-            )}
           </div>
         ) : (
           // Empty state when zoomed out but no notes
@@ -402,10 +366,10 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         {/* Toolbar - Compact mobile version at top */}
         {onShowTutorial && onRandomLocation && onReset && (
           <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 w-full max-w-[95vw] px-2">
-            <div className="bg-gray-900/90 backdrop-blur-xl rounded-lg shadow-lg border border-white/10 px-2 py-1.5 flex items-center justify-center gap-2 overflow-x-auto">
+            <div className="bg-gray-900/90 backdrop-blur-xl rounded-lg shadow-lg border border-white/10 px-2 py-2 flex items-center justify-center gap-2 overflow-x-auto">
               <button
                 onClick={onShowTutorial}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 hover:text-white active:bg-white/20 whitespace-nowrap"
+                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 hover:text-white active:bg-white/20 whitespace-nowrap"
                 title="Show Tutorial Notes"
               >
                 <GraduationCap size={14} />
@@ -414,7 +378,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               
               <button
                 onClick={onRandomLocation}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-purple-500/20 hover:text-purple-300 active:bg-purple-500/30 whitespace-nowrap"
+                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-purple-500/20 hover:text-purple-300 active:bg-purple-500/30 whitespace-nowrap"
                 title="Teleport to a random private location"
               >
                 <Shuffle size={14} />
@@ -423,7 +387,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               
               <button
                 onClick={onReset}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/20 hover:text-blue-300 active:bg-blue-500/30 whitespace-nowrap"
+                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/20 hover:text-blue-300 active:bg-blue-500/30 whitespace-nowrap"
                 title="Reset to Origin"
               >
                 <Navigation size={14} />
@@ -438,17 +402,27 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         )}
         
         {/* Zoom Buttons - Bottom right */}
-        <div className="fixed bottom-20 right-4 z-50 flex flex-col gap-2">
+        <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-2">
           <div className="bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 flex flex-col overflow-hidden">
             <button 
               onClick={handleZoomIn}
-              className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20"
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                handleZoomIn();
+              }}
+              className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
             >
               <Plus size={20} />
             </button>
             <button 
               onClick={handleZoomOut}
-              className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20"
+              onTouchStart={(e) => e.stopPropagation()}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                handleZoomOut();
+              }}
+              className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
             >
               <Minus size={20} />
             </button>
@@ -458,14 +432,14 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         {/* Navigator Panel Toggle Button */}
         <button
           onClick={() => setShowNavigator(!showNavigator)}
-          className="fixed bottom-4 right-4 z-50 bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 p-3 text-white/80 hover:bg-white/10 active:bg-white/20 transition-all"
+          className="fixed bottom-4 right-4 z-[60] bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 p-3 text-white/80 hover:bg-white/10 active:bg-white/20 transition-all"
         >
           {showNavigator ? <ChevronDown size={20} /> : <Navigation size={20} />}
         </button>
         
         {/* Navigator Panel - Slides up from bottom */}
         {showNavigator && (
-          <div className="fixed bottom-0 left-0 right-0 z-40 bg-gray-900/95 backdrop-blur-xl border-t border-white/10 rounded-t-2xl shadow-2xl max-h-[60vh] overflow-y-auto">
+          <div className="fixed bottom-0 left-0 right-0 z-[60] bg-gray-900/95 backdrop-blur-xl border-t border-white/10 rounded-t-2xl shadow-2xl max-h-[60vh] overflow-y-auto">
             <div className="p-4">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-semibold text-white/80 text-sm flex items-center gap-2">
