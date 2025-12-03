@@ -198,7 +198,25 @@ const App: React.FC = () => {
   useEffect(() => {
     if (isMobile && showMobileView) {
       if (notes.length > 0 && !focusedNoteId) {
-        // Set first note as focused when switching to mobile view
+        // Check for note ID in URL (for shared links)
+        const urlParams = new URLSearchParams(window.location.search);
+        const noteId = urlParams.get('note');
+        
+        if (noteId) {
+          // Find note by ID from URL
+          const note = notes.find(n => n.id === noteId);
+          if (note) {
+            setFocusedNoteId(noteId);
+            setMobileZoom(1.0);
+            // Center viewport on the note
+            const noteCenterX = (BigInt(note.x) + BigInt(note.width || 200) / 2n).toString();
+            const noteCenterY = (BigInt(note.y) + BigInt(note.height || 200) / 2n).toString();
+            setViewportCenter({ x: noteCenterX, y: noteCenterY });
+            return;
+          }
+        }
+        
+        // No note ID in URL, set first note as focused
         setFocusedNoteId(notes[0].id);
         setMobileZoom(1.0);
       }

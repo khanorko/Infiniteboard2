@@ -39,6 +39,8 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   onExit,
 }) => {
   const [swipeDownCount, setSwipeDownCount] = useState(0);
+  const [isControlsVisible, setIsControlsVisible] = useState(false);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const focusedNote = notes.find(n => n.id === focusedNoteId);
   
   // Ensure viewportCenter has valid values
@@ -130,6 +132,36 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     }
   }, [isFullscreen, zoomLevel, centerBig, onViewportChange]);
 
+  // Handle note tap to show/hide controls
+  const handleNoteTap = useCallback(() => {
+    setIsControlsVisible(true);
+    // Clear existing timeout
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    // Auto-hide after 4 seconds
+    controlsTimeoutRef.current = setTimeout(() => {
+      setIsControlsVisible(false);
+    }, 4000);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (controlsTimeoutRef.current) {
+        clearTimeout(controlsTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  // Hide controls when note changes
+  useEffect(() => {
+    setIsControlsVisible(false);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+  }, [focusedNoteId]);
+
   const gestures = useMobileGestures({
     onPinch: handlePinch,
     onSwipeUp: handleSwipeUp,
@@ -191,32 +223,38 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         style={{ touchAction: 'none' }}
       >
         {isFullscreen && focusedNote ? (
-          // Fullscreen note view
+          // Fullscreen note view - centered note-first experience
           <div className="w-full h-full flex items-center justify-center p-6">
             <div 
-              className="w-full max-w-2xl"
+              className="relative flex items-center justify-center"
               onTouchStart={(e) => e.stopPropagation()}
               onTouchMove={(e) => e.stopPropagation()}
             >
-              <StickyNote
-                note={focusedNote}
-                screenX={window.innerWidth / 2 - (focusedNote.width || 200) / 2}
-                screenY={window.innerHeight / 2 - (focusedNote.height || 200) / 2}
-                scale={1}
-                selected={true}
-                tool={ToolType.HAND}
-                onUpdate={onNoteUpdate}
-                onDelete={onNoteDelete}
-                onResize={onNoteResize}
-                onMouseDown={() => {}}
-                distanceOpacity={1}
-              />
+              <div className="relative" style={{ width: focusedNote.width || 200, height: focusedNote.height || 200 }}>
+                <StickyNote
+                  note={focusedNote}
+                  screenX={0}
+                  screenY={0}
+                  scale={1}
+                  selected={true}
+                  tool={ToolType.HAND}
+                  onUpdate={onNoteUpdate}
+                  onDelete={onNoteDelete}
+                  onResize={onNoteResize}
+                  onMouseDown={() => {}}
+                  distanceOpacity={1}
+                  showControls={isControlsVisible}
+                  onTap={handleNoteTap}
+                />
+              </div>
             </div>
             
-            {/* Subtle hint for swipe */}
-            <div className="fixed bottom-20 left-1/2 -translate-x-1/2 text-white/30 text-xs text-center pointer-events-none">
-              Swipe up to see more • Swipe down to exit
-            </div>
+            {/* Subtle hint for swipe - only show when controls are hidden */}
+            {!isControlsVisible && (
+              <div className="fixed bottom-20 left-1/2 -translate-x-1/2 text-white/30 text-xs text-center pointer-events-none">
+                Swipe up to see more • Swipe down to exit
+              </div>
+            )}
           </div>
         ) : isFullscreen && !focusedNote && notes.length === 0 ? (
           // Empty state - no notes yet

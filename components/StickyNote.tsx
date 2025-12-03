@@ -17,6 +17,8 @@ interface StickyNoteProps {
   onShare?: (id: string) => void;
   isFirstNote?: boolean;
   distanceOpacity?: number;
+  showControls?: boolean; // For mobile: control visibility of timer and delete
+  onTap?: () => void; // For mobile: handle tap to show controls
 }
 
 const StickyNote: React.FC<StickyNoteProps> = ({
@@ -34,6 +36,8 @@ const StickyNote: React.FC<StickyNoteProps> = ({
   onShare,
   isFirstNote = false,
   distanceOpacity = 1,
+  showControls = true, // Default to showing controls (desktop behavior)
+  onTap,
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [timeLeft, setTimeLeft] = useState(60);
@@ -138,11 +142,16 @@ const StickyNote: React.FC<StickyNoteProps> = ({
 
   const isEditable = selected;
 
+  // For mobile centered view, use relative positioning when screenX and screenY are 0
+  const isCentered = screenX === 0 && screenY === 0;
+  
   return (
     <div
-      className={`absolute flex flex-col transition-transform ${note.isFalling ? 'animate-fall pointer-events-none' : ''}`}
+      className={`${isCentered ? 'relative' : 'absolute'} flex flex-col transition-transform ${note.isFalling ? 'animate-fall pointer-events-none' : ''}`}
       style={{
-        transform: `translate(${screenX}px, ${screenY}px) rotate(${note.rotation}deg) scale(${scale})`,
+        transform: isCentered 
+          ? `rotate(${note.rotation}deg) scale(${scale})`
+          : `translate(${screenX}px, ${screenY}px) rotate(${note.rotation}deg) scale(${scale})`,
         transformOrigin: 'top left',
         width: `${localWidth}px`,
         height: `${localHeight}px`,
@@ -159,8 +168,24 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         style={{
           transition: isResizing ? 'none' : 'all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
         }}
+        onTouchStart={(e) => {
+          // Handle tap on mobile to show controls
+          if (onTap && !selected) {
+            onTap();
+          }
+        }}
+        onClick={(e) => {
+          // Handle click on desktop/mobile to show controls
+          if (onTap && !selected) {
+            onTap();
+          }
+        }}
       >
-        <div className="flex justify-between items-start mb-2 opacity-50 text-[10px] font-mono select-none">
+        <div 
+          className={`flex justify-between items-start mb-2 text-[10px] font-mono select-none transition-opacity duration-200 ${
+            showControls ? 'opacity-50' : 'opacity-0'
+          }`}
+        >
           <span>{timeDisplay}</span>
           {selected && (
             <div className="flex gap-1">
