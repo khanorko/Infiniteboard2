@@ -46,7 +46,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   onRandomLocation,
   onReset,
 }) => {
-  const [swipeDownCount, setSwipeDownCount] = useState(0);
   const [isControlsVisible, setIsControlsVisible] = useState(false);
   const [showNavigator, setShowNavigator] = useState(false);
   const [targetX, setTargetX] = useState<string>('0');
@@ -201,31 +200,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     setIsAddingPlace(false);
   };
 
-  const handleSwipeUp = useCallback(() => {
-    if (isFullscreen) {
-      // Zoom out to 0.5x
-      onZoomChange(0.5);
-    } else {
-      // Zoom out further
-      onZoomChange(Math.max(0.05, zoomLevel * 0.7));
-    }
-  }, [isFullscreen, zoomLevel, onZoomChange]);
-
-  const handleSwipeDown = useCallback(() => {
-    if (isFullscreen) {
-      // First swipe down: zoom out
-      onZoomChange(0.5);
-      setSwipeDownCount(1);
-    } else if (swipeDownCount === 1) {
-      // Second swipe down: exit mobile view
-      setSwipeDownCount(0);
-      onExit?.();
-    } else {
-      // Zoom in back to fullscreen
-      onZoomChange(1.0);
-      setSwipeDownCount(0);
-    }
-  }, [isFullscreen, swipeDownCount, onZoomChange, onExit]);
 
   const handleDoubleTap = useCallback((x: number, y: number) => {
     const worldPos = screenToWorld(x, y);
@@ -276,8 +250,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
 
   const gestures = useMobileGestures({
     onPinch: handlePinch,
-    onSwipeUp: handleSwipeUp,
-    onSwipeDown: handleSwipeDown,
     onDoubleTap: handleDoubleTap,
     onPan: handlePan,
   });
@@ -301,12 +273,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     }
   }, [notes, focusedNoteId, onNoteChange, onZoomChange]);
 
-  // Reset swipe count when zoom changes
-  useEffect(() => {
-    if (zoomLevel >= 0.95) {
-      setSwipeDownCount(0);
-    }
-  }, [zoomLevel]);
 
   // Calculate parallax offset for stars (with error handling)
   let parallaxX = 0;
@@ -361,12 +327,6 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               </div>
             </div>
             
-            {/* Subtle hint for swipe - only show when controls are hidden */}
-            {!isControlsVisible && (
-              <div className="fixed bottom-20 left-1/2 -translate-x-1/2 text-white/30 text-xs text-center pointer-events-none">
-                Swipe up to see more • Swipe down to exit
-              </div>
-            )}
           </div>
         ) : isFullscreen && !focusedNote && notes.length === 0 ? (
           // Empty state - no notes yet
@@ -374,7 +334,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
             <div className="text-center text-white/60 mb-8">
               <p className="text-xl mb-4">Welcome to Infinity Board</p>
               <p className="text-sm mb-6">Double tap anywhere to create your first note</p>
-              <p className="text-xs text-white/40">Swipe up to see more • Swipe down to exit</p>
+              <p className="text-xs text-white/40">Pinch to zoom • Use toolbar to navigate</p>
             </div>
           </div>
         ) : notes.length > 0 ? (
@@ -434,7 +394,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
             <div className="text-center text-white/60 mb-8">
               <p className="text-xl mb-4">No notes yet</p>
               <p className="text-sm mb-6">Double tap to create your first note</p>
-              <p className="text-xs text-white/40">Pinch to zoom • Swipe to navigate</p>
+              <p className="text-xs text-white/40">Pinch to zoom • Use toolbar to navigate</p>
             </div>
           </div>
         )}
