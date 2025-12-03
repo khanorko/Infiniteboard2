@@ -402,25 +402,49 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         )}
         
         {/* Zoom Buttons - Bottom right */}
-        <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-2">
+        <div className="fixed bottom-20 right-4 z-40 flex flex-col gap-2" onClick={(e) => e.stopPropagation()}>
           <div className="bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 flex flex-col overflow-hidden">
             <button 
-              onClick={handleZoomIn}
-              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleZoomIn();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 handleZoomIn();
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
               }}
               className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
             >
               <Plus size={20} />
             </button>
             <button 
-              onClick={handleZoomOut}
-              onTouchStart={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+                handleZoomOut();
+              }}
+              onTouchStart={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
+              }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 handleZoomOut();
+              }}
+              onMouseDown={(e) => {
+                e.stopPropagation();
+                e.preventDefault();
               }}
               className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto"
             >
