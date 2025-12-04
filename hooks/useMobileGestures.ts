@@ -3,7 +3,7 @@ import { useRef, useCallback } from 'react';
 interface GestureCallbacks {
   onPinch?: (scale: number, centerX: number, centerY: number) => void;
   onDoubleTap?: (x: number, y: number) => void;
-  onPan?: (dx: number, dy: number) => void;
+  onPan?: (dx: number, dy: number, touchX?: number, touchY?: number) => void;
 }
 
 export const useMobileGestures = (callbacks: GestureCallbacks) => {
@@ -68,7 +68,7 @@ export const useMobileGestures = (callbacks: GestureCallbacks) => {
       // Only trigger pan if movement is significant (avoid accidental pans)
       if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
         isPanningRef.current = true;
-        callbacks.onPan?.(dx, dy);
+        callbacks.onPan?.(dx, dy, touch.clientX, touch.clientY);
         panStartRef.current = { x: touch.clientX, y: touch.clientY };
       }
     }

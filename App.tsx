@@ -185,56 +185,57 @@ const App: React.FC = () => {
       const wasMobile = isMobile;
       setIsMobile(newIsMobile);
       
-      // When switching from desktop to mobile, always enable mobile view
+      // When switching from desktop to mobile, preserve viewport position
       if (newIsMobile && !wasMobile) {
         setShowMobileView(true);
-        // Preserve focusedNoteId if valid, otherwise set first note
-        if (notes.length > 0) {
-          if (focusedNoteId && notes.find(n => n.id === focusedNoteId)) {
-            // Keep current focused note
-            setMobileZoom(1.0);
-          } else {
-            // Set first note as focused
-            setFocusedNoteId(notes[0].id);
-            setMobileZoom(1.0);
-          }
-        }
+        // Preserve viewport center and convert scale to mobileZoom
+        // viewportCenter is already shared, just sync zoom
+        setMobileZoom(scale);
+        // Don't change focusedNoteId or viewportCenter - keep same position
+      }
+      // When switching from mobile to desktop, preserve viewport position
+      else if (!newIsMobile && wasMobile) {
+        // Preserve viewport center and convert mobileZoom to scale
+        setScale(mobileZoom);
+        // viewportCenter is already shared, so position is preserved
       }
     };
     checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [isMobile, notes, focusedNoteId]);
+  }, [isMobile, notes, scale, mobileZoom]);
 
-  // Initialize focused note on mobile when notes load or when switching to mobile
+  // Initialize focused note on mobile when notes load (only on initial load, not when switching views)
+  const prevIsMobileRef = useRef(isMobile);
   useEffect(() => {
-    if (isMobile && showMobileView) {
-      if (notes.length > 0) {
-        // Check for note ID in URL (for shared links)
-        const urlParams = new URLSearchParams(window.location.search);
-        const noteId = urlParams.get('note');
-        
-        if (noteId) {
-          // Find note by ID from URL
-          const note = notes.find(n => n.id === noteId);
-          if (note) {
-            setFocusedNoteId(noteId);
-            setMobileZoom(1.0);
-            // Center viewport on the note
-            const noteCenterX = (BigInt(note.x) + BigInt(note.width || 200) / 2n).toString();
-            const noteCenterY = (BigInt(note.y) + BigInt(note.height || 200) / 2n).toString();
-            setViewportCenter({ x: noteCenterX, y: noteCenterY });
-            return;
-          }
-        }
-        
-        // If no focused note or focused note doesn't exist, set first note
-        if (!focusedNoteId || !notes.find(n => n.id === focusedNoteId)) {
-          setFocusedNoteId(notes[0].id);
+    // Only run on initial mobile load, not when switching between views
+    if (isMobile && showMobileView && !prevIsMobileRef.current && notes.length > 0) {
+      // Check for note ID in URL (for shared links)
+      const urlParams = new URLSearchParams(window.location.search);
+      const noteId = urlParams.get('note');
+      
+      if (noteId) {
+        // Find note by ID from URL
+        const note = notes.find(n => n.id === noteId);
+        if (note) {
+          setFocusedNoteId(noteId);
           setMobileZoom(1.0);
+          // Center viewport on the note
+          const noteCenterX = (BigInt(note.x) + BigInt(note.width || 200) / 2n).toString();
+          const noteCenterY = (BigInt(note.y) + BigInt(note.height || 200) / 2n).toString();
+          setViewportCenter({ x: noteCenterX, y: noteCenterY });
+          prevIsMobileRef.current = isMobile;
+          return;
         }
       }
+      
+      // If no focused note or focused note doesn't exist, set first note
+      if (!focusedNoteId || !notes.find(n => n.id === focusedNoteId)) {
+        setFocusedNoteId(notes[0].id);
+        setMobileZoom(1.0);
+      }
     }
+    prevIsMobileRef.current = isMobile;
   }, [isMobile, notes, focusedNoteId, showMobileView]);
 
   // 0. Load data from Supabase (if configured) or localStorage
@@ -1025,6 +1026,38 @@ const App: React.FC = () => {
     }
   };
 
+  const handleNoteMove = useCallback((ids: string[], dx: string, dy: string) => {
+    const dxBig = BigInt(dx);
+    const dyBig = BigInt(dy);
+    
+    setNotes(prev => prev.map(n => {
+      if (ids.includes(n.id)) {
+        return {
+          ...n,
+          x: (BigInt(n.x) + dxBig).toString(),
+          y: (BigInt(n.y) + dyBig).toString(),
+        };
+      }
+      return n;
+    }));
+    
+    broadcast('NOTE_MOVE_BATCH', { 
+      ids, 
+      dx, 
+      dy 
+    });
+    
+    // Track total delta for Supabase sync
+    if (USE_SUPABASE) {
+      if (!movedNotesDelta.current) {
+        movedNotesDelta.current = { ids, dx: dxBig, dy: dyBig };
+      } else {
+        movedNotesDelta.current.dx += dxBig;
+        movedNotesDelta.current.dy += dyBig;
+      }
+    }
+  }, []);
+
   // Bulk operations for selected notes
   const handleBulkColorChange = (color: string) => {
     if (selectedNoteIds.size === 0) return;
@@ -1135,6 +1168,7 @@ const App: React.FC = () => {
         onNoteUpdate={handleNoteUpdate}
         onNoteDelete={handleNoteDelete}
         onNoteResize={handleNoteResize}
+        onNoteMove={handleNoteMove}
         viewportCenter={viewportCenter}
         onViewportChange={setViewportCenter}
         onExit={() => setShowMobileView(false)}

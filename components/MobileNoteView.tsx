@@ -5,7 +5,7 @@ import Starfield from './Onboarding/Starfield';
 import { useMobileGestures } from '../hooks/useMobileGestures';
 import { parseBigPoint, getRelativeOffset, BigPoint, formatSectorCoord } from '../utils/bigCoords';
 import { ToolType } from '../types';
-import { Plus, Minus, Navigation, ChevronDown, Star, MapPin, Trash2, Infinity, GraduationCap, Shuffle } from 'lucide-react';
+import { Plus, Minus, Navigation, ChevronDown, Star, MapPin, Trash2, Infinity, Hand, MousePointer2, StickyNote as StickyNoteIcon } from 'lucide-react';
 import { useSavedPlaces } from '../hooks/useSavedPlaces';
 
 interface MobileNoteViewProps {
@@ -19,6 +19,7 @@ interface MobileNoteViewProps {
   onNoteUpdate: (id: string, text: string) => void;
   onNoteDelete: (id: string) => void;
   onNoteResize?: (id: string, width: number, height: number) => void;
+  onNoteMove?: (ids: string[], dx: string, dy: string) => void;
   viewportCenter: { x: string; y: string };
   onViewportChange: (x: string, y: string) => void;
   onExit?: () => void;
@@ -40,6 +41,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   onNoteUpdate,
   onNoteDelete,
   onNoteResize,
+  onNoteMove,
   viewportCenter,
   onViewportChange,
   onExit,
@@ -56,6 +58,11 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   const [isAddingPlace, setIsAddingPlace] = useState(false);
   const [newPlaceName, setNewPlaceName] = useState('');
   const [showSavedPlaces, setShowSavedPlaces] = useState(true);
+  const [activeTool, setActiveTool] = useState<ToolType>(ToolType.HAND);
+  const [userNavigated, setUserNavigated] = useState(false);
+  const [selectedNoteIds, setSelectedNoteIds] = useState<Set<string>>(new Set());
+  const [isDragging, setIsDragging] = useState(false);
+  const [noteDragStart, setNoteDragStart] = useState<{ x: string; y: string } | null>(null);
   const focusedNote = notes.find(n => n.id === focusedNoteId);
   const { savedPlaces, addPlace, removePlace } = useSavedPlaces();
   
@@ -122,24 +129,46 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   const handlePinch = useCallback((scale: number, centerX: number, centerY: number) => {
     // Allow zoom range from 5% to 300%
     const newZoom = Math.max(0.05, Math.min(3.0, zoomLevel * scale));
+    
+    // Calculate world coordinates of pinch center point
+    const pinchWorld = screenToWorld(centerX, centerY);
+    
+    // Calculate how much the viewport needs to shift to keep pinch point in same screen position
+    const screenCenterX = window.innerWidth / 2;
+    const screenCenterY = window.innerHeight / 2;
+    const offsetX = centerX - screenCenterX;
+    const offsetY = centerY - screenCenterY;
+    
+    // Calculate the adjustment needed for viewport center
+    const adjustX = Math.round(offsetX / newZoom - offsetX / zoomLevel);
+    const adjustY = Math.round(offsetY / newZoom - offsetY / zoomLevel);
+    
+    // Update zoom first
     onZoomChange(newZoom);
-  }, [zoomLevel, onZoomChange]);
+    
+    // Adjust viewport center to keep pinch point in same screen position
+    const newViewportX = (BigInt(viewportCenter.x) - BigInt(adjustX)).toString();
+    const newViewportY = (BigInt(viewportCenter.y) - BigInt(adjustY)).toString();
+    onViewportChange(newViewportX, newViewportY);
+  }, [zoomLevel, onZoomChange, screenToWorld, viewportCenter, onViewportChange]);
   
-  // Zoom button handlers - prevent note selection when zooming
+  // Zoom button handlers - only zoom, no side effects
   const handleZoomIn = useCallback((e?: React.SyntheticEvent) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
+    // Only change zoom level, zoom around current viewport center
     const newZoom = Math.min(3.0, zoomLevel + 0.1);
     onZoomChange(newZoom);
   }, [zoomLevel, onZoomChange]);
-  
+
   const handleZoomOut = useCallback((e?: React.SyntheticEvent) => {
     if (e) {
       e.stopPropagation();
       e.preventDefault();
     }
+    // Only change zoom level, zoom around current viewport center
     const newZoom = Math.max(0.05, zoomLevel - 0.1);
     onZoomChange(newZoom);
   }, [zoomLevel, onZoomChange]);
@@ -181,7 +210,12 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     try {
       BigInt(targetX || '0');
       BigInt(targetY || '0');
+      setUserNavigated(true);
       onViewportChange(targetX || '0', targetY || '0');
+      // Clear focused note when user navigates to different coordinates
+      if (focusedNoteId) {
+        onNoteChange(null);
+      }
       setShowNavigator(false);
     } catch {
       setError('Enter valid integers');
@@ -211,21 +245,81 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
 
 
   const handleDoubleTap = useCallback((x: number, y: number) => {
-    const worldPos = screenToWorld(x, y);
-    // Create note - App.tsx will handle setting it as focused
-    onCreateNote(worldPos.x, worldPos.y);
-  }, [screenToWorld, onCreateNote]);
+    if (activeTool === ToolType.NOTE) {
+      const worldPos = screenToWorld(x, y);
+      // Offset by half note size to center the note
+      const noteX = (BigInt(worldPos.x) - 100n).toString();
+      const noteY = (BigInt(worldPos.y) - 100n).toString();
+      onCreateNote(noteX, noteY);
+    }
+  }, [screenToWorld, onCreateNote, activeTool]);
 
-  const handlePan = useCallback((dx: number, dy: number) => {
-    if (!isFullscreen) {
-      // Pan viewport when zoomed out
+  // Handle note touch start (similar to onNoteMouseDown in web view)
+  const handleNoteTouchStart = useCallback((e: React.TouchEvent, noteId: string) => {
+    if (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) {
+      e.stopPropagation();
+      
+      const touch = e.touches[0];
+      const worldPos = screenToWorld(touch.clientX, touch.clientY);
+      
+      // Check if touching textarea (don't start drag if editing)
+      const target = e.target as HTMLElement;
+      const isTextArea = target.tagName.toLowerCase() === 'textarea' || target.closest('textarea');
+      
+      if (!isTextArea) {
+        setIsDragging(true);
+        setNoteDragStart(worldPos);
+        lastNoteDragPos.current = worldPos;
+      }
+
+      // Handle selection (similar to web view)
+      if (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) {
+        const newSet = new Set(selectedNoteIds);
+        if (newSet.has(noteId)) {
+          // If already selected, keep it selected
+        } else {
+          // Select this note
+          setSelectedNoteIds(new Set([noteId]));
+          // Also set as focused for mobile view consistency
+          onNoteChange(noteId);
+        }
+      }
+    }
+  }, [activeTool, screenToWorld, selectedNoteIds]);
+
+  // Handle note touch move (dragging notes) - integrated into pan handler
+  // Handle note touch end
+  const handleNoteTouchEnd = useCallback(() => {
+    if (isDragging) {
+      setIsDragging(false);
+      setNoteDragStart(null);
+      lastNoteDragPos.current = null;
+    }
+  }, [isDragging]);
+
+  // Track note dragging in pan handler
+  const lastNoteDragPos = useRef<{ x: string; y: string } | null>(null);
+
+  const handlePan = useCallback((dx: number, dy: number, touchX?: number, touchY?: number) => {
+    // If dragging notes (SELECT or NOTE tool with selected notes)
+    if (isDragging && selectedNoteIds.size > 0 && (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) && touchX !== undefined && touchY !== undefined && lastNoteDragPos.current) {
+      const currentWorld = screenToWorld(touchX, touchY);
+      const deltaX = BigInt(currentWorld.x) - BigInt(lastNoteDragPos.current.x);
+      const deltaY = BigInt(currentWorld.y) - BigInt(lastNoteDragPos.current.y);
+      
+      if ((deltaX !== 0n || deltaY !== 0n) && onNoteMove) {
+        onNoteMove(Array.from(selectedNoteIds), deltaX.toString(), deltaY.toString());
+        lastNoteDragPos.current = currentWorld;
+      }
+    } else if (activeTool === ToolType.HAND && !isDragging && !isFullscreen) {
+      // Pan viewport when HAND tool is active and not dragging notes
       const worldDx = Math.round(-dx / zoomLevel);
       const worldDy = Math.round(-dy / zoomLevel);
       const newX = (centerBig.x + BigInt(worldDx)).toString();
       const newY = (centerBig.y + BigInt(worldDy)).toString();
       onViewportChange(newX, newY);
     }
-  }, [isFullscreen, zoomLevel, centerBig, onViewportChange]);
+  }, [isFullscreen, zoomLevel, centerBig, onViewportChange, activeTool, isDragging, selectedNoteIds, screenToWorld, onNoteMove]);
 
 
   const gestures = useMobileGestures({
@@ -234,24 +328,64 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     onPan: handlePan,
   });
 
-  // Update viewport center to focused note when it changes
+  // Track previous zoom level to detect zoom changes
+  const prevZoomLevelRef = useRef(zoomLevel);
+  const prevFocusedNoteIdRef = useRef(focusedNoteId);
+  const isZoomingRef = useRef(false);
+  
+  // Update viewport center to focused note when it changes (but not when user navigates or zooms)
   useEffect(() => {
-    if (focusedNote && isFullscreen) {
+    const zoomChanged = prevZoomLevelRef.current !== zoomLevel;
+    const focusedNoteChanged = prevFocusedNoteIdRef.current !== focusedNoteId;
+    const wasFullscreen = prevZoomLevelRef.current >= 0.95;
+    const isNowFullscreen = zoomLevel >= 0.95;
+    
+    prevZoomLevelRef.current = zoomLevel;
+    prevFocusedNoteIdRef.current = focusedNoteId;
+    
+    // Mark that we're zooming if zoom level changed
+    if (zoomChanged) {
+      isZoomingRef.current = true;
+      // Clear the flag after a short delay
+      setTimeout(() => {
+        isZoomingRef.current = false;
+      }, 100);
+    }
+    
+    // Only auto-center when focused note actually changes, not when zooming
+    if (focusedNote && isFullscreen && !userNavigated && focusedNoteChanged && !zoomChanged) {
       // Center viewport on focused note using dynamic note size
       const noteCenterX = (BigInt(focusedNote.x) + BigInt(noteSize) / 2n).toString();
       const noteCenterY = (BigInt(focusedNote.y) + BigInt(noteSize) / 2n).toString();
       onViewportChange(noteCenterX, noteCenterY);
     }
-  }, [focusedNoteId, isFullscreen, focusedNote, onViewportChange, noteSize]);
+    
+    // When zooming out from fullscreen, keep the focused note but don't auto-center
+    // This prevents switching to a different note when zooming out
+    if (zoomChanged && wasFullscreen && !isNowFullscreen && focusedNoteId) {
+      // Keep the focused note, just don't auto-center
+      // The note will remain focused but shown in the zoomed-out view
+    }
+    
+    // Reset userNavigated flag after handling
+    if (userNavigated) {
+      setUserNavigated(false);
+    }
+  }, [focusedNoteId, isFullscreen, focusedNote, onViewportChange, noteSize, userNavigated, zoomLevel]);
 
   // Auto-focus first note when notes are created (if no focused note)
+  // Only trigger when notes are actually added, not on every render
+  const prevNotesLengthRef = useRef(notes.length);
   useEffect(() => {
-    if (notes.length > 0 && !focusedNoteId) {
-      // Set first note as focused
+    const notesAdded = notes.length > prevNotesLengthRef.current;
+    prevNotesLengthRef.current = notes.length;
+    
+    if (notesAdded && notes.length > 0 && !focusedNoteId) {
+      // Set first note as focused only when new notes are added
       onNoteChange(notes[0].id);
       onZoomChange(1.0);
     }
-  }, [notes, focusedNoteId, onNoteChange, onZoomChange]);
+  }, [notes.length, focusedNoteId, onNoteChange, onZoomChange]);
 
 
   // Calculate parallax offset for stars (with error handling)
@@ -295,7 +429,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                   screenY={0}
                   scale={1}
                   selected={true}
-                  tool={ToolType.HAND}
+                  tool={activeTool}
                   onUpdate={onNoteUpdate}
                   onDelete={onNoteDelete}
                   onResize={onNoteResize}
@@ -335,12 +469,14 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               return (
                 <div
                   key={note.id}
-                  onClick={() => onNoteChange(note.id)}
-                  className={`absolute cursor-pointer transition-all ${isFocused ? 'z-10 scale-110' : 'z-0'}`}
+                  onTouchStart={(e) => handleNoteTouchStart(e, note.id)}
+                  onTouchEnd={handleNoteTouchEnd}
+                  className={`absolute transition-all ${selectedNoteIds.has(note.id) ? 'z-10 scale-110' : 'z-0'}`}
                   style={{
                     left: screenPos.x - (note.width || noteSize) / 2,
                     top: screenPos.y - (note.height || noteSize) / 2,
                     transform: `scale(${zoomLevel < 0.2 ? 0.5 : zoomLevel})`,
+                    touchAction: 'none',
                   }}
                 >
                   <StickyNote
@@ -348,12 +484,29 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                     screenX={0}
                     screenY={0}
                     scale={1}
-                    selected={isFocused}
-                    tool={ToolType.HAND}
+                    selected={selectedNoteIds.has(note.id)}
+                    tool={activeTool}
                     onUpdate={onNoteUpdate}
                     onDelete={onNoteDelete}
                     onResize={onNoteResize}
-                    onMouseDown={() => {}}
+                    onMouseDown={(e, id) => {
+                      // Handle mouse events for desktop testing
+                      if (activeTool === ToolType.SELECT || activeTool === ToolType.NOTE) {
+                        e.stopPropagation();
+                        const target = e.target as HTMLElement;
+                        const isTextArea = target.tagName.toLowerCase() === 'textarea' || target.closest('textarea');
+                        if (!isTextArea) {
+                          setIsDragging(true);
+                          const worldPos = screenToWorld(e.clientX, e.clientY);
+                          setNoteDragStart(worldPos);
+                          lastNoteDragPos.current = worldPos;
+                        }
+                        const newSet = new Set(selectedNoteIds);
+                        if (!newSet.has(id)) {
+                          setSelectedNoteIds(new Set([id]));
+                        }
+                      }
+                    }}
                     distanceOpacity={zoomLevel < 0.2 ? 0.6 : 1}
                   />
                 </div>
@@ -371,43 +524,47 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
           </div>
         )}
         
-        {/* Toolbar - Compact mobile version at top */}
-        {onShowTutorial && onRandomLocation && onReset && (
-          <div className="fixed top-2 left-1/2 -translate-x-1/2 z-50 w-full max-w-[95vw] px-2">
-            <div className="bg-gray-900/90 backdrop-blur-xl rounded-lg shadow-lg border border-white/10 px-2 py-2 flex items-center justify-center gap-2 overflow-x-auto">
-              <button
-                onClick={onShowTutorial}
-                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-white/10 hover:text-white active:bg-white/20 whitespace-nowrap"
-                title="Show Tutorial Notes"
-              >
-                <GraduationCap size={14} />
-                <span className="hidden sm:inline">Tutorial</span>
-              </button>
-              
-              <button
-                onClick={onRandomLocation}
-                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-purple-500/20 hover:text-purple-300 active:bg-purple-500/30 whitespace-nowrap"
-                title="Teleport to a random private location"
-              >
-                <Shuffle size={14} />
-                <span className="hidden sm:inline">Random</span>
-              </button>
-              
-              <button
-                onClick={onReset}
-                className="flex items-center gap-1.5 p-3 rounded-lg text-xs font-medium transition-colors bg-white/5 text-white/70 border border-white/10 hover:bg-blue-500/20 hover:text-blue-300 active:bg-blue-500/30 whitespace-nowrap"
-                title="Reset to Origin"
-              >
-                <Navigation size={14} />
-                <span className="hidden sm:inline">Reset</span>
-              </button>
-              
-              <div className="text-xs text-white/40 font-mono ml-1 px-2">
-                {notes.length}
-              </div>
-            </div>
-          </div>
-        )}
+        {/* Toolbar - Only tool buttons */}
+        <div 
+          className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-xl rounded-full shadow-lg border border-white/10 px-4 py-2 flex items-center gap-1 z-50"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <button
+            onClick={() => setActiveTool(ToolType.HAND)}
+            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
+              activeTool === ToolType.HAND 
+                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+                : 'text-white/60 hover:bg-white/10 hover:text-white'
+            }`}
+            title="Pan (H)"
+          >
+            <Hand size={20} />
+          </button>
+          <button
+            onClick={() => setActiveTool(ToolType.SELECT)}
+            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
+              activeTool === ToolType.SELECT 
+                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+                : 'text-white/60 hover:bg-white/10 hover:text-white'
+            }`}
+            title="Select (V)"
+          >
+            <MousePointer2 size={20} />
+          </button>
+          <button
+            onClick={() => setActiveTool(ToolType.NOTE)}
+            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
+              activeTool === ToolType.NOTE 
+                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+                : 'text-white/60 hover:bg-white/10 hover:text-white'
+            }`}
+            title="Post-it (N)"
+          >
+            <StickyNoteIcon size={20} />
+          </button>
+        </div>
         
         {/* Zoom Buttons - Bottom right */}
         <div 
@@ -618,7 +775,12 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                           >
                             <button
                               onClick={() => {
+                                setUserNavigated(true);
                                 onViewportChange(place.x, place.y);
+                                // Clear focused note when navigating to saved place
+                                if (focusedNoteId) {
+                                  onNoteChange(null);
+                                }
                                 setShowNavigator(false);
                               }}
                               className="flex-1 flex items-center gap-2 text-left"
@@ -655,6 +817,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
             </div>
           </div>
         )}
+        
       </div>
     </div>
   );
