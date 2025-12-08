@@ -76,14 +76,14 @@ export const useMobileGestures = (callbacks: GestureCallbacks) => {
 
   const handleTouchEnd = useCallback((e: React.TouchEvent) => {
     const touches = e.changedTouches;
-    
+
     if (touches.length === 1 && touchStartRef.current) {
       const touch = touches[0];
       const dx = touch.clientX - touchStartRef.current.x;
       const dy = touch.clientY - touchStartRef.current.y;
       const distance = Math.sqrt(dx * dx + dy * dy);
       const time = Date.now() - touchStartRef.current.time;
-      
+
       // Check for double tap
       const timeSinceLastTap = Date.now() - lastTapRef.current;
       if (timeSinceLastTap < 300 && distance < 10) {
@@ -94,9 +94,8 @@ export const useMobileGestures = (callbacks: GestureCallbacks) => {
         // Single tap - store for potential double tap
         lastTapRef.current = Date.now();
       }
-      // Swipe gestures removed - no longer needed
     }
-    
+
     // Reset
     if (e.touches.length === 0) {
       isPinchingRef.current = false;

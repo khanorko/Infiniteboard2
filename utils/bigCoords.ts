@@ -119,13 +119,83 @@ export function formatSectorCoord(coord: string): string {
     const sign = num < 0n ? '–' : '+';
     const abs = num < 0n ? -num : num;
     const str = abs.toString();
-    
+
     // Add spaces every 3 digits from right to left
     const formatted = str.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-    
+
     return `${sign}${formatted}`;
   } catch {
     return '+0';
+  }
+}
+
+// URL-safe Base64 characters (no +, /, =)
+const BASE64_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_';
+
+/**
+ * Encode BigInt coordinates into a compact URL-safe string
+ * Format: encodes x and y as variable-length base64-like representation
+ */
+export function encodeCoords(x: string, y: string): string {
+  try {
+    const xBig = BigInt(x || '0');
+    const yBig = BigInt(y || '0');
+
+    const encodeNum = (num: bigint): string => {
+      const isNegative = num < 0n;
+      let abs = isNegative ? -num : num;
+
+      if (abs === 0n) return '0';
+
+      let result = '';
+      const base = 64n;
+
+      while (abs > 0n) {
+        result = BASE64_CHARS[Number(abs % base)] + result;
+        abs = abs / base;
+      }
+
+      return (isNegative ? '-' : '') + result;
+    };
+
+    return encodeNum(xBig) + '.' + encodeNum(yBig);
+  } catch {
+    return '0.0';
+  }
+}
+
+/**
+ * Decode a compact URL string back to BigInt coordinate strings
+ */
+export function decodeCoords(encoded: string): { x: string; y: string } | null {
+  try {
+    const parts = encoded.split('.');
+    if (parts.length !== 2) return null;
+
+    const decodeNum = (str: string): string => {
+      if (str === '0') return '0';
+
+      const isNegative = str.startsWith('-');
+      const chars = isNegative ? str.slice(1) : str;
+
+      let result = 0n;
+      const base = 64n;
+
+      for (const char of chars) {
+        const index = BASE64_CHARS.indexOf(char);
+        if (index === -1) return '0';
+        result = result * base + BigInt(index);
+      }
+
+      return (isNegative ? -result : result).toString();
+    };
+
+    return {
+      x: decodeNum(parts[0]),
+      y: decodeNum(parts[1]),
+    };
+  } catch {
+    return null;
   }
 }
 

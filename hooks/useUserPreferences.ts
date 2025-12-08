@@ -58,6 +58,14 @@ export const useUserPreferences = () => {
   // Check if URL has shared coordinates (skip onboarding for direct links)
   const hasSharedCoordinates = useCallback(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Check for new compact format
+    const encoded = params.get('c');
+    if (encoded && encoded.includes('.')) {
+      return true;
+    }
+
+    // Check for legacy x/y format
     const x = params.get('x');
     const y = params.get('y');
     if (x && y) {

@@ -11,8 +11,8 @@ import MobileNoteView from './components/MobileNoteView';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
 import { useUserPreferences } from './hooks/useUserPreferences';
-import { Loader2, Info, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles, Trash2 } from 'lucide-react';
-import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint } from './utils/bigCoords';
+import { Loader2, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles, Trash2 } from 'lucide-react';
+import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint, encodeCoords, decodeCoords } from './utils/bigCoords';
 import {
   isSupabaseConfigured,
   fetchNotes,
@@ -72,7 +72,7 @@ const App: React.FC = () => {
   // Mobile view state - initialize based on current viewport
   const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' && window.innerWidth < 768);
   const [focusedNoteId, setFocusedNoteId] = useState<string | null>(null);
-  const [mobileZoom, setMobileZoom] = useState(1.0);
+  const [mobileZoom, setMobileZoom] = useState(1.0); // Default to 100% zoom
   const [showMobileView, setShowMobileView] = useState(true); // Control mobile view visibility
   
   // --- State ---
@@ -178,32 +178,36 @@ const App: React.FC = () => {
 
   // --- Effects ---
 
-  // Device detection - activate mobile view when viewport is narrow (< 768px)
+  // Device detection - track if viewport is narrow (< 768px) and sync zoom between views
+  const wasMobileRef = useRef(isMobile);
+  const scaleRef = useRef(scale);
+  const mobileZoomRef = useRef(mobileZoom);
+
+  useEffect(() => { scaleRef.current = scale; }, [scale]);
+  useEffect(() => { mobileZoomRef.current = mobileZoom; }, [mobileZoom]);
+
   useEffect(() => {
     const checkMobile = () => {
       const newIsMobile = window.innerWidth < 768;
-      const wasMobile = isMobile;
-      setIsMobile(newIsMobile);
-      
-      // When switching from desktop to mobile, preserve viewport position
-      if (newIsMobile && !wasMobile) {
-        setShowMobileView(true);
-        // Preserve viewport center and convert scale to mobileZoom
-        // viewportCenter is already shared, just sync zoom
-        setMobileZoom(scale);
-        // Don't change focusedNoteId or viewportCenter - keep same position
-      }
-      // When switching from mobile to desktop, preserve viewport position
-      else if (!newIsMobile && wasMobile) {
-        // Preserve viewport center and convert mobileZoom to scale
-        setScale(mobileZoom);
-        // viewportCenter is already shared, so position is preserved
+      const wasMobile = wasMobileRef.current;
+
+      if (newIsMobile !== wasMobile) {
+        wasMobileRef.current = newIsMobile;
+        setIsMobile(newIsMobile);
+
+        if (newIsMobile) {
+          // Switching to mobile - default to 100% zoom
+          setShowMobileView(true);
+          setMobileZoom(1.0);
+        } else {
+          // Switching to desktop - sync zoom back
+          setScale(mobileZoomRef.current);
+        }
       }
     };
-    checkMobile();
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
-  }, [isMobile, notes, scale, mobileZoom]);
+  }, []);
 
   // Initialize focused note on mobile when notes load (only on initial load, not when switching views)
   const prevIsMobileRef = useRef(isMobile);
@@ -230,9 +234,10 @@ const App: React.FC = () => {
       }
       
       // If no focused note or focused note doesn't exist, set first note
+      // but keep canvas view (don't zoom to 1.0) so user can see all notes
       if (!focusedNoteId || !notes.find(n => n.id === focusedNoteId)) {
         setFocusedNoteId(notes[0].id);
-        setMobileZoom(1.0);
+        // Keep current zoom - don't force fullscreen mode
       }
     }
     prevIsMobileRef.current = isMobile;
@@ -316,6 +321,21 @@ const App: React.FC = () => {
   // 3. URL Params Handling (Deep Link)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+
+    // Try new compact format first (c=encoded)
+    const encoded = params.get('c');
+    if (encoded) {
+      const decoded = decodeCoords(encoded);
+      if (decoded) {
+        setViewportCenter(decoded);
+        setTimeout(() => {
+          starfieldBurstRef.current?.(3, 400);
+        }, 100);
+        return;
+      }
+    }
+
+    // Fall back to legacy x/y format
     const x = params.get('x');
     const y = params.get('y');
     if (x && y) {
@@ -324,7 +344,7 @@ const App: React.FC = () => {
         BigInt(x);
         BigInt(y);
         setViewportCenter({ x, y });
-        
+
         // Trigger arrival burst after starfield mounts
         setTimeout(() => {
           starfieldBurstRef.current?.(3, 400);
@@ -650,19 +670,19 @@ const App: React.FC = () => {
     // Set the viewport to the new location
     setViewportCenter({ x: newX, y: newY });
     starfieldBurstRef.current?.(8, 300); // Big random teleport burst
-    
-    // Create shareable URL
+
+    // Create shareable URL with compact encoding
+    const encoded = encodeCoords(newX, newY);
     const url = new URL(window.location.origin);
-    url.searchParams.set('x', newX);
-    url.searchParams.set('y', newY);
-    
+    url.searchParams.set('c', encoded);
+
     // Copy to clipboard
     navigator.clipboard.writeText(url.toString()).then(() => {
       setToast("🎲 Teleported to a private spot! Link copied 📋");
     }).catch(() => {
       setToast(`🎲 Teleported to (${newX.slice(0, 8)}..., ${newY.slice(0, 8)}...)`);
     });
-    
+
     setTimeout(() => setToast(null), 4000);
   };
 
@@ -742,17 +762,18 @@ const App: React.FC = () => {
   const handleShare = (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
-    
+
     // Share the CENTER of the note (not top-left corner) so it appears centered on screen
     const centerX = (BigInt(note.x) + 100n).toString(); // 100 = half of 200px note width
     const centerY = (BigInt(note.y) + 100n).toString(); // 100 = half of 200px note height
-    
-    const url = new URL(window.location.href);
-    url.searchParams.set('x', centerX);
-    url.searchParams.set('y', centerY);
-    
+
+    // Use compact encoding for shorter URLs
+    const encoded = encodeCoords(centerX, centerY);
+    const url = new URL(window.location.origin);
+    url.searchParams.set('c', encoded);
+
     navigator.clipboard.writeText(url.toString()).then(() => {
-      setToast("Link with coordinates copied to clipboard!");
+      setToast("Link copied to clipboard!");
       setTimeout(() => setToast(null), 3000);
     });
   };
@@ -863,8 +884,8 @@ const App: React.FC = () => {
         const dy = Math.round((e.clientY - dragStart.y) / scale);
         // Move viewport center in opposite direction
         setViewportCenter(prev => ({
-          x: (BigInt(prev.x) - BigInt(dx)).toString(),
-          y: (BigInt(prev.y) - BigInt(dy)).toString(),
+          x: (BigInt(prev?.x || '0') - BigInt(dx)).toString(),
+          y: (BigInt(prev?.y || '0') - BigInt(dy)).toString(),
         }));
         setDragStart({ x: e.clientX, y: e.clientY });
       } else if (activeTool === ToolType.SELECT && selectionBox) {
@@ -1153,8 +1174,7 @@ const App: React.FC = () => {
     return null; // Or a loading spinner
   }
 
-  // Mobile view - activate when mobile and showMobileView is true
-  // On mobile, skip onboarding and go straight to mobile view
+  // Mobile view - use cleaner mobile UI when viewport is narrow
   if (isMobile && showMobileView) {
     return (
       <MobileNoteView
@@ -1170,12 +1190,12 @@ const App: React.FC = () => {
         onNoteResize={handleNoteResize}
         onNoteMove={handleNoteMove}
         viewportCenter={viewportCenter}
-        onViewportChange={setViewportCenter}
+        onViewportChange={(x, y) => setViewportCenter({ x, y })}
         onExit={() => setShowMobileView(false)}
         onShowTutorial={handleShowTutorial}
         onRandomLocation={handleRandomLocation}
-        onReset={() => { 
-          setViewportCenter({ x: '0', y: '0' }); 
+        onReset={() => {
+          setViewportCenter({ x: '0', y: '0' });
           setMobileZoom(1.0);
           starfieldBurstRef.current?.(5, 200);
         }}
@@ -1466,22 +1486,7 @@ const App: React.FC = () => {
         )}
       </div>
 
-      {/* Info Toast */}
-      <div className="fixed top-6 right-6 max-w-xs bg-gray-900/80 backdrop-blur-xl border border-white/10 p-4 rounded-lg shadow-sm text-sm text-white/60 pointer-events-none select-none z-40">
-        <div className="flex items-start gap-2">
-          <Info className="shrink-0 mt-0.5 text-blue-400" size={16} />
-          <div>
-            <p className="font-semibold text-white/90">Ephemeral Infinity Board</p>
-            <p className="mt-1">
-              {USE_SUPABASE 
-                ? "🌐 Real multiplayer! Notes sync across all users worldwide." 
-                : "Multiplayer syncs locally. Open a second tab to see it."}
-            </p>
-            <p className="mt-1 text-xs text-white/40">Hold Shift to multi-select. Group notes to auto-label them with AI. Hover over clusters to edit title or color.</p>
-          </div>
-        </div>
-      </div>
-      
+
     </div>
     </>
   );

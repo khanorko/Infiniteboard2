@@ -99,7 +99,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
     centerBig = { x: 0n, y: 0n };
   }
   
-  const isFullscreen = zoomLevel >= 0.95; // Use 0.95 for smoother transitions
+  // Always show canvas view with all notes (no fullscreen single-note mode)
 
   // Convert world position to screen position
   const worldToScreen = useCallback((worldX: string, worldY: string): { x: number; y: number } => {
@@ -311,7 +311,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         onNoteMove(Array.from(selectedNoteIds), deltaX.toString(), deltaY.toString());
         lastNoteDragPos.current = currentWorld;
       }
-    } else if (activeTool === ToolType.HAND && !isDragging && !isFullscreen) {
+    } else if (activeTool === ToolType.HAND && !isDragging) {
       // Pan viewport when HAND tool is active and not dragging notes
       const worldDx = Math.round(-dx / zoomLevel);
       const worldDy = Math.round(-dy / zoomLevel);
@@ -319,7 +319,7 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
       const newY = (centerBig.y + BigInt(worldDy)).toString();
       onViewportChange(newX, newY);
     }
-  }, [isFullscreen, zoomLevel, centerBig, onViewportChange, activeTool, isDragging, selectedNoteIds, screenToWorld, onNoteMove]);
+  }, [zoomLevel, centerBig, onViewportChange, activeTool, isDragging, selectedNoteIds, screenToWorld, onNoteMove]);
 
 
   const gestures = useMobileGestures({
@@ -333,57 +333,40 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
   const prevFocusedNoteIdRef = useRef(focusedNoteId);
   const isZoomingRef = useRef(false);
   
-  // Update viewport center to focused note when it changes (but not when user navigates or zooms)
+  // Track zoom changes
   useEffect(() => {
     const zoomChanged = prevZoomLevelRef.current !== zoomLevel;
-    const focusedNoteChanged = prevFocusedNoteIdRef.current !== focusedNoteId;
-    const wasFullscreen = prevZoomLevelRef.current >= 0.95;
-    const isNowFullscreen = zoomLevel >= 0.95;
-    
     prevZoomLevelRef.current = zoomLevel;
     prevFocusedNoteIdRef.current = focusedNoteId;
-    
-    // Mark that we're zooming if zoom level changed
+
     if (zoomChanged) {
       isZoomingRef.current = true;
-      // Clear the flag after a short delay
       setTimeout(() => {
         isZoomingRef.current = false;
       }, 100);
     }
-    
-    // Only auto-center when focused note actually changes, not when zooming
-    if (focusedNote && isFullscreen && !userNavigated && focusedNoteChanged && !zoomChanged) {
-      // Center viewport on focused note using dynamic note size
-      const noteCenterX = (BigInt(focusedNote.x) + BigInt(noteSize) / 2n).toString();
-      const noteCenterY = (BigInt(focusedNote.y) + BigInt(noteSize) / 2n).toString();
-      onViewportChange(noteCenterX, noteCenterY);
-    }
-    
-    // When zooming out from fullscreen, keep the focused note but don't auto-center
-    // This prevents switching to a different note when zooming out
-    if (zoomChanged && wasFullscreen && !isNowFullscreen && focusedNoteId) {
-      // Keep the focused note, just don't auto-center
-      // The note will remain focused but shown in the zoomed-out view
-    }
-    
-    // Reset userNavigated flag after handling
+
     if (userNavigated) {
       setUserNavigated(false);
     }
-  }, [focusedNoteId, isFullscreen, focusedNote, onViewportChange, noteSize, userNavigated, zoomLevel]);
+  }, [focusedNoteId, focusedNote, onViewportChange, noteSize, userNavigated, zoomLevel]);
 
   // Auto-focus first note when notes are created (if no focused note)
   // Only trigger when notes are actually added, not on every render
   const prevNotesLengthRef = useRef(notes.length);
   useEffect(() => {
     const notesAdded = notes.length > prevNotesLengthRef.current;
+    const wasEmpty = prevNotesLengthRef.current === 0;
     prevNotesLengthRef.current = notes.length;
-    
+
     if (notesAdded && notes.length > 0 && !focusedNoteId) {
       // Set first note as focused only when new notes are added
       onNoteChange(notes[0].id);
-      onZoomChange(1.0);
+      // Only zoom to fullscreen if creating first note on empty board
+      // When switching from desktop with existing notes, keep canvas view
+      if (wasEmpty) {
+        onZoomChange(1.0);
+      }
     }
   }, [notes.length, focusedNoteId, onNoteChange, onZoomChange]);
 
@@ -414,45 +397,16 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
         onTouchEnd={gestures.onTouchEnd}
         style={{ touchAction: 'none' }}
       >
-        {isFullscreen && focusedNote ? (
-          // Fullscreen note view - centered note-first experience
-          <div className="w-full h-full flex items-center justify-center" style={{ padding: '24px' }}>
-            <div 
-              className="relative flex items-center justify-center"
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchMove={(e) => e.stopPropagation()}
-            >
-              <div className="relative" style={{ width: noteSize, height: noteSize }}>
-                <StickyNote
-                  note={focusedNote}
-                  screenX={0}
-                  screenY={0}
-                  scale={1}
-                  selected={true}
-                  tool={activeTool}
-                  onUpdate={onNoteUpdate}
-                  onDelete={onNoteDelete}
-                  onResize={onNoteResize}
-                  onMouseDown={() => {}}
-                  distanceOpacity={1}
-                  showControls={true}
-                  onShare={onShare}
-                  onAIExpand={onAIExpand}
-                />
-              </div>
-            </div>
-            
-          </div>
-        ) : isFullscreen && !focusedNote && notes.length === 0 ? (
+        {notes.length === 0 ? (
           // Empty state - no notes yet
           <div className="w-full h-full flex flex-col items-center justify-center p-6">
             <div className="text-center text-white/60 mb-8">
               <p className="text-xl mb-4">Welcome to Infinity Board</p>
-              <p className="text-sm mb-6">Double tap anywhere to create your first note</p>
+              <p className="text-sm mb-6">Tap the + button to create your first note</p>
               <p className="text-xs text-white/40">Pinch to zoom • Use toolbar to navigate</p>
             </div>
           </div>
-        ) : notes.length > 0 ? (
+        ) : (
           // Zoomed out mini-canvas view
           <div className="w-full h-full relative">
             {/* Render notes */}
@@ -513,134 +467,125 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
               );
             })}
           </div>
-        ) : (
-          // Empty state when zoomed out but no notes
-          <div className="w-full h-full flex flex-col items-center justify-center p-6">
-            <div className="text-center text-white/60 mb-8">
-              <p className="text-xl mb-4">No notes yet</p>
-              <p className="text-sm mb-6">Double tap to create your first note</p>
-              <p className="text-xs text-white/40">Pinch to zoom • Use toolbar to navigate</p>
-            </div>
-          </div>
         )}
         
-        {/* Toolbar - Only tool buttons */}
-        <div 
-          className="fixed top-6 left-1/2 -translate-x-1/2 bg-gray-900/80 backdrop-blur-xl rounded-full shadow-lg border border-white/10 px-4 py-2 flex items-center gap-1 z-50"
+        {/* Toolbar - Only tool buttons - improved touch targets (min 44px) */}
+        <div
+          className="fixed top-4 left-1/2 -translate-x-1/2 bg-gray-900/90 backdrop-blur-xl rounded-2xl shadow-lg border border-white/10 px-3 py-2 flex items-center gap-2 z-50"
           onTouchStart={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
         >
           <button
             onClick={() => setActiveTool(ToolType.HAND)}
-            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
-              activeTool === ToolType.HAND 
-                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+            className={`min-w-[44px] min-h-[44px] p-3 rounded-xl transition-all duration-200 flex items-center justify-center active:scale-95 ${
+              activeTool === ToolType.HAND
+                ? 'bg-white/20 text-white shadow-sm'
                 : 'text-white/60 hover:bg-white/10 hover:text-white'
             }`}
-            title="Pan (H)"
+            title="Pan"
           >
-            <Hand size={20} />
+            <Hand size={22} />
           </button>
           <button
             onClick={() => setActiveTool(ToolType.SELECT)}
-            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
-              activeTool === ToolType.SELECT 
-                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+            className={`min-w-[44px] min-h-[44px] p-3 rounded-xl transition-all duration-200 flex items-center justify-center active:scale-95 ${
+              activeTool === ToolType.SELECT
+                ? 'bg-white/20 text-white shadow-sm'
                 : 'text-white/60 hover:bg-white/10 hover:text-white'
             }`}
-            title="Select (V)"
+            title="Select"
           >
-            <MousePointer2 size={20} />
+            <MousePointer2 size={22} />
           </button>
           <button
             onClick={() => setActiveTool(ToolType.NOTE)}
-            className={`p-2.5 rounded-full transition-all duration-200 flex items-center justify-center relative group ${
-              activeTool === ToolType.NOTE 
-                ? 'bg-white/20 text-white scale-110 shadow-sm' 
+            className={`min-w-[44px] min-h-[44px] p-3 rounded-xl transition-all duration-200 flex items-center justify-center active:scale-95 ${
+              activeTool === ToolType.NOTE
+                ? 'bg-white/20 text-white shadow-sm'
                 : 'text-white/60 hover:bg-white/10 hover:text-white'
             }`}
-            title="Post-it (N)"
+            title="Create Note"
           >
-            <StickyNoteIcon size={20} />
+            <StickyNoteIcon size={22} />
           </button>
         </div>
         
-        {/* Zoom Buttons - Bottom right */}
-        <div 
-          className="fixed bottom-20 right-4 z-40 flex flex-col gap-2" 
+        {/* Zoom Buttons - Bottom right - improved touch targets */}
+        <div
+          className="fixed bottom-24 right-4 z-40 flex flex-col gap-2"
           onClick={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
           onTouchMove={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-          <div className="bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 flex flex-col overflow-hidden">
-            <button 
+          <div className="bg-gray-900/90 backdrop-blur-xl rounded-2xl shadow-xl border border-white/10 flex flex-col overflow-hidden">
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 handleZoomIn(e);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              onTouchMove={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
               }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 handleZoomIn(e);
               }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              className="p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto touch-none"
+              className="min-w-[48px] min-h-[48px] p-3 hover:bg-white/10 border-b border-white/10 flex items-center justify-center text-white/80 active:bg-white/20 active:scale-95 transition-all pointer-events-auto"
               style={{ touchAction: 'manipulation' }}
             >
-              <Plus size={20} />
+              <Plus size={24} />
             </button>
-            <button 
+            <button
               onClick={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 handleZoomOut(e);
-              }}
-              onTouchStart={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              onTouchMove={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
               }}
               onTouchEnd={(e) => {
                 e.stopPropagation();
                 e.preventDefault();
                 handleZoomOut(e);
               }}
-              onMouseDown={(e) => {
-                e.stopPropagation();
-                e.preventDefault();
-              }}
-              className="p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 pointer-events-auto touch-none"
+              className="min-w-[48px] min-h-[48px] p-3 hover:bg-white/10 flex items-center justify-center text-white/80 active:bg-white/20 active:scale-95 transition-all pointer-events-auto"
               style={{ touchAction: 'manipulation' }}
             >
-              <Minus size={20} />
+              <Minus size={24} />
             </button>
+          </div>
+          {/* Zoom level indicator */}
+          <div className="bg-gray-900/70 backdrop-blur-sm rounded-lg px-2 py-1 text-center">
+            <span className="text-white/50 text-xs font-mono">{Math.round(zoomLevel * 100)}%</span>
           </div>
         </div>
         
+        {/* Floating Action Button - Quick note creation */}
+        <button
+          onClick={() => {
+            const safeX = viewportCenter?.x || '0';
+            const safeY = viewportCenter?.y || '0';
+            // Add random offset so new notes don't stack exactly on top of each other
+            const offsetX = Math.floor(Math.random() * 150) - 75; // -75 to +75
+            const offsetY = Math.floor(Math.random() * 150) - 75;
+            const noteX = (BigInt(safeX) - 100n + BigInt(offsetX)).toString();
+            const noteY = (BigInt(safeY) - 100n + BigInt(offsetY)).toString();
+            onCreateNote(noteX, noteY);
+          }}
+          className="fixed bottom-4 left-4 z-[60] w-14 h-14 bg-yellow-400 hover:bg-yellow-300 active:bg-yellow-500 active:scale-95 rounded-full shadow-lg flex items-center justify-center transition-all"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchMove={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+        >
+          <Plus size={28} className="text-gray-900" />
+        </button>
+
         {/* Navigator Panel Toggle Button */}
         <button
           onClick={() => setShowNavigator(!showNavigator)}
-          className="fixed bottom-4 right-4 z-[60] bg-gray-900/80 backdrop-blur-xl rounded-lg shadow-xl border border-white/10 p-3 text-white/80 hover:bg-white/10 active:bg-white/20 transition-all"
+          className="fixed bottom-4 right-4 z-[60] min-w-[48px] min-h-[48px] bg-gray-900/90 backdrop-blur-xl rounded-full shadow-xl border border-white/10 p-3 text-white/80 hover:bg-white/10 active:bg-white/20 active:scale-95 transition-all flex items-center justify-center"
         >
-          {showNavigator ? <ChevronDown size={20} /> : <Navigation size={20} />}
+          {showNavigator ? <ChevronDown size={22} /> : <Navigation size={22} />}
         </button>
         
         {/* Navigator Panel - Slides up from bottom */}
@@ -783,11 +728,13 @@ const MobileNoteView: React.FC<MobileNoteViewProps> = ({
                                 }
                                 setShowNavigator(false);
                               }}
-                              className="flex-1 flex items-center gap-2 text-left"
+                              className="flex-1 flex flex-col text-left overflow-hidden"
                             >
-                              <MapPin size={12} className="text-yellow-400/70 shrink-0" />
-                              <span className="text-sm text-white/80 truncate">{place.name}</span>
-                              <span className="text-xs text-white/30 font-mono shrink-0">
+                              <div className="flex items-center gap-2">
+                                <MapPin size={12} className="text-yellow-400/70 shrink-0" />
+                                <span className="text-sm text-white/80 truncate">{place.name}</span>
+                              </div>
+                              <span className="text-xs text-white/30 font-mono ml-5">
                                 {formatPlaceCoords(place.x, place.y)}
                               </span>
                             </button>
