@@ -1,0 +1,60 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background -->
+  <rect width="1200" height="630" fill="#0a0a0f"/>
+
+  <!-- Subtle stars -->
+  <circle cx="100" cy="80" r="1.5" fill="white" opacity="0.6"/>
+  <circle cx="250" cy="150" r="1" fill="white" opacity="0.4"/>
+  <circle cx="400" cy="50" r="1.5" fill="white" opacity="0.5"/>
+  <circle cx="550" cy="120" r="1" fill="white" opacity="0.3"/>
+  <circle cx="700" cy="70" r="2" fill="white" opacity="0.5"/>
+  <circle cx="850" cy="140" r="1" fill="white" opacity="0.4"/>
+  <circle cx="1000" cy="60" r="1.5" fill="white" opacity="0.6"/>
+  <circle cx="1100" cy="100" r="1" fill="white" opacity="0.3"/>
+  <circle cx="150" cy="500" r="1" fill="white" opacity="0.4"/>
+  <circle cx="300" cy="550" r="1.5" fill="white" opacity="0.5"/>
+  <circle cx="900" cy="520" r="1" fill="white" opacity="0.3"/>
+  <circle cx="1050" cy="480" r="1.5" fill="white" opacity="0.5"/>
+
+  <!-- Yellow sticky note - tilted -->
+  <g transform="translate(280, 180) rotate(-6)">
+    <rect width="200" height="200" fill="#fff740" rx="4"/>
+    <rect width="200" height="30" fill="#e6de00" opacity="0.3" rx="4"/>
+    <!-- Lines on note -->
+    <line x1="20" y1="60" x2="180" y2="60" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="90" x2="160" y2="90" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="120" x2="140" y2="120" stroke="#00000020" stroke-width="1"/>
+  </g>
+
+  <!-- Blue sticky note -->
+  <g transform="translate(520, 220) rotate(3)">
+    <rect width="200" height="200" fill="#a5ecfa" rx="4"/>
+    <rect width="200" height="30" fill="#7dd4e8" opacity="0.3" rx="4"/>
+    <line x1="20" y1="60" x2="180" y2="60" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="90" x2="150" y2="90" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="120" x2="170" y2="120" stroke="#00000020" stroke-width="1"/>
+  </g>
+
+  <!-- Pink sticky note - tilted other way -->
+  <g transform="translate(720, 200) rotate(-3)">
+    <rect width="200" height="200" fill="#fdcfe8" rx="4"/>
+    <rect width="200" height="30" fill="#f5a5cf" opacity="0.3" rx="4"/>
+    <line x1="20" y1="60" x2="170" y2="60" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="90" x2="145" y2="90" stroke="#00000020" stroke-width="1"/>
+    <line x1="20" y1="120" x2="160" y2="120" stroke="#00000020" stroke-width="1"/>
+  </g>
+
+  <!-- Title text -->
+  <text x="600" y="520" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="48" font-weight="600" fill="white">
+    Infinity Board
+  </text>
+
+  <!-- Subtitle -->
+  <text x="600" y="570" text-anchor="middle" font-family="system-ui, -apple-system, sans-serif" font-size="24" fill="white" opacity="0.6">
+    Endless canvas for your ideas
+  </text>
+
+  <!-- Sparkle emoji as decoration -->
+  <text x="420" y="525" font-size="36">✨</text>
+  <text x="750" y="525" font-size="36">✨</text>
+</svg>

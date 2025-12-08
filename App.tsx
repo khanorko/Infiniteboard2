@@ -759,7 +759,7 @@ const App: React.FC = () => {
     }, 500);
   }, [setUserName, setUserColor, completeOnboarding]);
 
-  const handleShare = (id: string) => {
+  const handleShare = async (id: string) => {
     const note = notes.find(n => n.id === id);
     if (!note) return;
 
@@ -771,11 +771,32 @@ const App: React.FC = () => {
     const encoded = encodeCoords(centerX, centerY);
     const url = new URL(window.location.origin);
     url.searchParams.set('c', encoded);
+    const shareUrl = url.toString();
 
-    navigator.clipboard.writeText(url.toString()).then(() => {
+    // Try native share API first (mobile), fall back to clipboard
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'Check out this note',
+          text: note.text ? note.text.slice(0, 100) : 'A note on Infinity Board',
+          url: shareUrl,
+        });
+        setToast("Shared!");
+        setTimeout(() => setToast(null), 2000);
+      } catch (err) {
+        // User cancelled or share failed, fall back to clipboard
+        if ((err as Error).name !== 'AbortError') {
+          await navigator.clipboard.writeText(shareUrl);
+          setToast("Link copied to clipboard!");
+          setTimeout(() => setToast(null), 3000);
+        }
+      }
+    } else {
+      // Desktop fallback - copy to clipboard
+      await navigator.clipboard.writeText(shareUrl);
       setToast("Link copied to clipboard!");
       setTimeout(() => setToast(null), 3000);
-    });
+    }
   };
 
   const handleZoomBtn = (delta: number) => {
