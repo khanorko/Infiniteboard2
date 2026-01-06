@@ -221,29 +221,32 @@ const App: React.FC = () => {
     broadcastChannelRef.current?.postMessage({ type, payload, senderId: MY_USER_ID });
   };
 
-  const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false, customColor?: string) => {
-    // Check if note is being dropped in tutorial area - if so, move it outside
-    let finalX = worldX;
-    let finalY = worldY;
-    const noteX = BigInt(worldX);
-    const noteY = BigInt(worldY);
+  // Helper to check if coordinates are in tutorial area
+  const isInTutorialArea = useCallback((x: string, y: string): boolean => {
+    const noteX = BigInt(x);
+    const noteY = BigInt(y);
     const tutorialMinX = TUTORIAL_AREA_X - 200n;
     const tutorialMaxX = TUTORIAL_AREA_X + BigInt(TUTORIAL_COLS) * TUTORIAL_SPACING + 400n;
     const tutorialMinY = TUTORIAL_AREA_Y - 200n;
     const tutorialMaxY = TUTORIAL_AREA_Y + 3n * TUTORIAL_SPACING + 400n; // 3 rows
+    return noteX >= tutorialMinX && noteX <= tutorialMaxX &&
+           noteY >= tutorialMinY && noteY <= tutorialMaxY;
+  }, []);
 
-    const inTutorialArea = noteX >= tutorialMinX && noteX <= tutorialMaxX &&
-                          noteY >= tutorialMinY && noteY <= tutorialMaxY;
+  // Get position outside tutorial area
+  const getPositionOutsideTutorial = useCallback((x: string, y: string): { x: string; y: string } => {
+    const tutorialMaxY = TUTORIAL_AREA_Y + 3n * TUTORIAL_SPACING + 400n;
+    return { x, y: (tutorialMaxY + 300n).toString() };
+  }, []);
 
-    if (inTutorialArea) {
-      // Move note below the tutorial area
-      finalY = (tutorialMaxY + 300n).toString();
-    }
+  const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false, customColor?: string) => {
+    const noteId = crypto.randomUUID();
+    const inTutorialArea = isInTutorialArea(worldX, worldY);
 
     const newNote: Note = {
-      id: crypto.randomUUID(),
-      x: finalX,
-      y: finalY,
+      id: noteId,
+      x: worldX,
+      y: worldY,  // Create at original position first
       text: content,
       color: customColor || userColor || NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
       createdAt: Date.now(),
@@ -252,18 +255,44 @@ const App: React.FC = () => {
       width: 200,
       height: 200,
     };
+    // If in tutorial area, mark as sliding for animation
+    if (inTutorialArea) {
+      newNote.isSliding = true;
+    }
+
     setNotes(prev => [...prev, newNote]);
     broadcast('NOTE_CREATE', newNote);
-    
-    // Save to Supabase if configured
+
+    // If in tutorial area, slide out after brief delay for animation
+    if (inTutorialArea) {
+      setTimeout(() => {
+        const newPos = getPositionOutsideTutorial(worldX, worldY);
+        setNotes(prev => prev.map(n =>
+          n.id === noteId ? { ...n, x: newPos.x, y: newPos.y } : n
+        ));
+        // Remove sliding flag after animation
+        setTimeout(() => {
+          setNotes(prev => prev.map(n =>
+            n.id === noteId ? { ...n, isSliding: false } : n
+          ));
+        }, 350);
+      }, 50);
+    }
+
+    // Save to Supabase if configured (use final position)
     if (USE_SUPABASE) {
-      createNoteInDb(newNote);
+      if (inTutorialArea) {
+        const finalPos = getPositionOutsideTutorial(worldX, worldY);
+        createNoteInDb({ ...newNote, x: finalPos.x, y: finalPos.y, isSliding: false });
+      } else {
+        createNoteInDb(newNote);
+      }
     }
 
     if (!aiGenerated) {
       setSelectedNoteIds(new Set([newNote.id]));
     }
-    
+
     // On mobile, set as focused
     if (isMobile) {
       setFocusedNoteId(newNote.id);
@@ -278,7 +307,7 @@ const App: React.FC = () => {
         setTimeout(() => setShowNotificationPrompt(true), 2000);
       }
     }
-  }, [userColor, isMobile, notificationsSupported, notificationSettings.permission]);
+  }, [userColor, isMobile, notificationsSupported, notificationSettings.permission, isInTutorialArea, getPositionOutsideTutorial]);
 
   // --- Effects ---
 
@@ -1128,16 +1157,39 @@ const App: React.FC = () => {
     }
 
     // Reset tutorial notes to their original positions after drag
+    // Also slide out any non-tutorial notes that ended up in tutorial area
     setNotes(prev => prev.map(n => {
-      if (!n.isTutorial) return n;
-      const originalPos = getTutorialNoteOriginalPosition(n.id);
-      if (!originalPos) return n;
-      return { ...n, x: originalPos.x, y: originalPos.y };
+      // Tutorial notes snap back
+      if (n.isTutorial) {
+        const originalPos = getTutorialNoteOriginalPosition(n.id);
+        if (!originalPos) return n;
+        return { ...n, x: originalPos.x, y: originalPos.y };
+      }
+      // Non-tutorial notes in tutorial area slide out
+      if (isInTutorialArea(n.x, n.y)) {
+        return { ...n, isSliding: true };
+      }
+      return n;
     }));
+
+    // After a brief delay, move sliding notes outside tutorial area
+    setTimeout(() => {
+      setNotes(prev => prev.map(n => {
+        if (n.isSliding && !n.isTutorial && isInTutorialArea(n.x, n.y)) {
+          const newPos = getPositionOutsideTutorial(n.x, n.y);
+          return { ...n, x: newPos.x, y: newPos.y };
+        }
+        return n;
+      }));
+      // Remove sliding flag after animation
+      setTimeout(() => {
+        setNotes(prev => prev.map(n => ({ ...n, isSliding: false })));
+      }, 350);
+    }, 50);
 
     setIsDragging(false);
     lastMousePos.current = null;
-  }, [activeTool, selectionBox, selectedNoteIds, notes, worldToScreen, scale]);
+  }, [activeTool, selectionBox, selectedNoteIds, notes, worldToScreen, scale, isInTutorialArea, getPositionOutsideTutorial]);
 
   useEffect(() => {
     window.addEventListener('mouseup', handleMouseUp);

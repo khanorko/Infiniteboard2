@@ -19,6 +19,7 @@ export interface Note {
   height?: number;  // Optional, defaults to 200
   isFalling?: boolean;
   isTutorial?: boolean;  // Tutorial notes are static and can't be deleted/shared/AI expanded
+  isSliding?: boolean;   // Animating slide out of tutorial area
 }
 
 export interface Cluster {
