@@ -221,22 +221,28 @@ const App: React.FC = () => {
     broadcastChannelRef.current?.postMessage({ type, payload, senderId: MY_USER_ID });
   };
 
-  // Helper to check if coordinates are in tutorial area
+  // Tutorial frame bounds (matching the visual frame)
+  const TUTORIAL_FRAME_X = TUTORIAL_AREA_X - 50n;
+  const TUTORIAL_FRAME_Y = TUTORIAL_AREA_Y - 50n;
+  const TUTORIAL_FRAME_WIDTH = BigInt(TUTORIAL_COLS) * TUTORIAL_SPACING + 100n;
+  const TUTORIAL_FRAME_HEIGHT = 3n * TUTORIAL_SPACING + 100n;
+
+  // Helper to check if coordinates are in tutorial area (including frame)
   const isInTutorialArea = useCallback((x: string, y: string): boolean => {
     const noteX = BigInt(x);
     const noteY = BigInt(y);
-    const tutorialMinX = TUTORIAL_AREA_X - 200n;
-    const tutorialMaxX = TUTORIAL_AREA_X + BigInt(TUTORIAL_COLS) * TUTORIAL_SPACING + 400n;
-    const tutorialMinY = TUTORIAL_AREA_Y - 200n;
-    const tutorialMaxY = TUTORIAL_AREA_Y + 3n * TUTORIAL_SPACING + 400n; // 3 rows
-    return noteX >= tutorialMinX && noteX <= tutorialMaxX &&
-           noteY >= tutorialMinY && noteY <= tutorialMaxY;
+    // Check if note overlaps with tutorial frame (note is ~200x200)
+    const noteSize = 200n;
+    return noteX + noteSize > TUTORIAL_FRAME_X &&
+           noteX < TUTORIAL_FRAME_X + TUTORIAL_FRAME_WIDTH &&
+           noteY + noteSize > TUTORIAL_FRAME_Y &&
+           noteY < TUTORIAL_FRAME_Y + TUTORIAL_FRAME_HEIGHT;
   }, []);
 
-  // Get position outside tutorial area
+  // Get position outside tutorial area (below the frame)
   const getPositionOutsideTutorial = useCallback((x: string, y: string): { x: string; y: string } => {
-    const tutorialMaxY = TUTORIAL_AREA_Y + 3n * TUTORIAL_SPACING + 400n;
-    return { x, y: (tutorialMaxY + 300n).toString() };
+    const belowFrame = TUTORIAL_FRAME_Y + TUTORIAL_FRAME_HEIGHT + 50n;
+    return { x, y: belowFrame.toString() };
   }, []);
 
   const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false, customColor?: string) => {
@@ -1498,6 +1504,38 @@ const App: React.FC = () => {
           />
         );
       })}
+
+      {/* Tutorial Area Frame - visible boundary */}
+      {(() => {
+        const screenPos = worldToScreen(TUTORIAL_FRAME_X.toString(), TUTORIAL_FRAME_Y.toString());
+        const screenWidth = Number(TUTORIAL_FRAME_WIDTH) * scale;
+        const screenHeight = Number(TUTORIAL_FRAME_HEIGHT) * scale;
+
+        // Only render if visible on screen
+        if (screenPos.x > window.innerWidth + 100 || screenPos.x + screenWidth < -100 ||
+            screenPos.y > window.innerHeight + 100 || screenPos.y + screenHeight < -100) {
+          return null;
+        }
+
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: screenPos.x,
+              top: screenPos.y,
+              width: screenWidth,
+              height: screenHeight,
+              border: '3px dashed rgba(147, 51, 234, 0.4)',
+              borderRadius: '24px',
+              backgroundColor: 'rgba(147, 51, 234, 0.05)',
+            }}
+          >
+            <div className="absolute -top-8 left-4 text-purple-400/60 text-sm font-medium flex items-center gap-2">
+              <span>📚</span> Tutorial Area
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Render Notes */}
       {notes.map(note => {
