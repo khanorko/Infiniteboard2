@@ -47,7 +47,7 @@ const FirstNoteScreen: React.FC<FirstNoteScreenProps> = ({ userColor, onCreateNo
       <div className="animate-fade-in-up w-full max-w-2xl relative">
         <div className="flex flex-col md:flex-row gap-8 items-start">
           {/* Left: Input Card */}
-          <div className="flex-1 bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
+          <div className="flex-1 bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 shadow-2xl">
             <h2 className="text-2xl md:text-3xl font-light text-white/90 mb-2 tracking-wide">
               What are you working on today?
             </h2>
@@ -67,9 +67,9 @@ const FirstNoteScreen: React.FC<FirstNoteScreenProps> = ({ userColor, onCreateNo
               placeholder="Write a short note..."
               rows={3}
               maxLength={200}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4
+              className="w-full bg-white/10 border border-white/10 rounded-xl px-5 py-4
                          text-white/90 placeholder:text-white/30 text-base
-                         focus:outline-none focus:border-white/30 focus:bg-white/10
+                         focus:outline-none focus:border-white/30 focus:bg-white/15
                          transition-all duration-300 resize-none"
             />
 
