@@ -65,3 +65,24 @@ NOTE_LIFESPAN_MS = 31415000  // π × 10,000 seconds
 // Tutorial area: coordinates (10000, 10000)
 // AI limit: 5 requests per user (localStorage)
 ```
+
+## Business Developer Agent
+
+A specialized agent for commercial analysis is available at `.claude/agents/business-developer.md`.
+
+### Usage
+Invoke the business developer analysis by asking Claude to:
+- "Analyze this project from a commercial perspective"
+- "Run business developer analysis"
+- "What are the monetization opportunities?"
+
+### Memory
+The agent maintains persistent memory at `.claude/agents/business-memory.md`.
+**Important:** When compacting conversations, always append session insights to the memory file.
+
+### Agent Focus Areas
+- SaaS monetization strategies (EMEA focus)
+- Freemium/Premium conversion
+- GDPR compliance considerations
+- Competitive positioning
+- Growth and scalability analysis
