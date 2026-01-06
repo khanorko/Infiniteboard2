@@ -222,10 +222,28 @@ const App: React.FC = () => {
   };
 
   const createNote = useCallback((worldX: string, worldY: string, content: string = '', aiGenerated: boolean = false, customColor?: string) => {
+    // Check if note is being dropped in tutorial area - if so, move it outside
+    let finalX = worldX;
+    let finalY = worldY;
+    const noteX = BigInt(worldX);
+    const noteY = BigInt(worldY);
+    const tutorialMinX = TUTORIAL_AREA_X - 200n;
+    const tutorialMaxX = TUTORIAL_AREA_X + BigInt(TUTORIAL_COLS) * TUTORIAL_SPACING + 400n;
+    const tutorialMinY = TUTORIAL_AREA_Y - 200n;
+    const tutorialMaxY = TUTORIAL_AREA_Y + 3n * TUTORIAL_SPACING + 400n; // 3 rows
+
+    const inTutorialArea = noteX >= tutorialMinX && noteX <= tutorialMaxX &&
+                          noteY >= tutorialMinY && noteY <= tutorialMaxY;
+
+    if (inTutorialArea) {
+      // Move note below the tutorial area
+      finalY = (tutorialMaxY + 300n).toString();
+    }
+
     const newNote: Note = {
       id: crypto.randomUUID(),
-      x: worldX,
-      y: worldY,
+      x: finalX,
+      y: finalY,
       text: content,
       color: customColor || userColor || NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)],
       createdAt: Date.now(),
