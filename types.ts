@@ -18,6 +18,7 @@ export interface Note {
   width?: number;   // Optional, defaults to 200
   height?: number;  // Optional, defaults to 200
   isFalling?: boolean;
+  isTutorial?: boolean;  // Tutorial notes are static and can't be deleted/shared/AI expanded
 }
 
 export interface Cluster {

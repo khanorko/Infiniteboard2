@@ -140,7 +140,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
     window.addEventListener('mouseup', handleResizeEnd);
   }, [scale, localWidth, localHeight, note.id, onResize]);
 
-  const isEditable = selected;
+  const isEditable = selected && !note.isTutorial;
 
   // For mobile centered view, use relative positioning when screenX and screenY are 0
   const isCentered = screenX === 0 && screenY === 0;
@@ -186,11 +186,11 @@ const StickyNote: React.FC<StickyNoteProps> = ({
             showControls ? 'opacity-50' : 'opacity-0'
           }`}
         >
-          <span>{timeDisplay}</span>
-          {selected && (
+          <span>{note.isTutorial ? '📚 Tutorial' : timeDisplay}</span>
+          {selected && !note.isTutorial && (
             <div className="flex gap-1">
               {onShare && (
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); onShare(note.id); }}
                   className="hover:text-blue-600 transition-colors p-1"
                   title="Copy Link"
@@ -199,7 +199,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
                 </button>
               )}
               {onAIExpand && (
-                <button 
+                <button
                   onClick={(e) => { e.stopPropagation(); onAIExpand(note.id, note.text); }}
                   className="hover:text-purple-600 transition-colors p-1"
                   title="Gemini Brainstorm"
@@ -207,7 +207,7 @@ const StickyNote: React.FC<StickyNoteProps> = ({
                   <Sparkles size={14} />
                 </button>
               )}
-              <button 
+              <button
                 onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
                 className="hover:text-red-600 transition-colors p-1"
               >
@@ -228,8 +228,8 @@ const StickyNote: React.FC<StickyNoteProps> = ({
           style={{ pointerEvents: isEditable ? 'auto' : 'none' }} 
         />
         
-        {/* Resize handle - only show when selected */}
-        {selected && onResize && (
+        {/* Resize handle - only show when selected (not for tutorial notes) */}
+        {selected && onResize && !note.isTutorial && (
           <div
             className="absolute bottom-1 right-1 w-5 h-5 cursor-se-resize flex items-center justify-center opacity-50 hover:opacity-100 transition-opacity"
             onMouseDown={handleResizeStart}

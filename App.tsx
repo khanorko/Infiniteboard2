@@ -36,6 +36,47 @@ const BROADCAST_CHANNEL_NAME = 'ephemeral-board-sync';
 const MY_USER_ID = crypto.randomUUID();
 const USE_SUPABASE = isSupabaseConfigured();
 
+// --- Tutorial Notes (Static, Pre-generated) ---
+const TUTORIAL_AREA_X = 10000n;
+const TUTORIAL_AREA_Y = 10000n;
+const TUTORIAL_SPACING = 300n;
+const TUTORIAL_COLS = 4;
+
+const TUTORIAL_NOTES_CONTENT = [
+  { text: "👋 Welcome to Ephemeral Infinity Board!\n\nThis is a cosmic canvas where ideas flourish and fade after π×10⁴ seconds (≈8.7 hours).\n\nEverything you see is REAL and syncs worldwide! 🌐", color: 'bg-note-yellow' },
+  { text: "✏️ Create Notes\n\nClick anywhere on the canvas to drop a new sticky note.\n\nTry it now! Click the canvas and start writing. ➡️", color: 'bg-note-blue' },
+  { text: "🗺️ Navigate the Infinite Canvas\n\n• Drag background = Pan around\n• Mouse wheel = Zoom in/out\n• This board is TRULY infinite!\n\nTry zooming out to see everything! 🔍", color: 'bg-note-green' },
+  { text: "🔧 Tools (top toolbar)\n\n✋ Hand - Pan the canvas\n🔲 Select - Multi-select notes\n📝 Note - Create new notes\n\nSwitch tools to explore! →", color: 'bg-note-pink' },
+  { text: "🎯 Multi-Select Magic\n\n1. Click the Select tool (□)\n2. Drag a box around notes\n3. Or hold Shift + click notes\n\nSelected? Try grouping them! ⬇️", color: 'bg-note-orange' },
+  { text: "🤖 AI-Powered Grouping\n\nSelect 2+ notes, then click:\n'Group & Label' \n\nGemini AI will create a smart title for your cluster!\n\nMagic! ✨", color: 'bg-note-purple' },
+  { text: "💡 AI Brainstorm\n\n1. Click a note to select it\n2. Click the ✨ sparkle icon\n3. Gemini generates related ideas!\n\nThey spread around like a mind map 🧠", color: 'bg-note-teal' },
+  { text: "🔗 Share a Note\n\nSelect a note → Click the 🔗 icon\n\nCopies a direct link! Anyone clicking it will teleport to that exact note location.\n\nTry it! →", color: 'bg-note-lime' },
+  { text: "⏳ Everything Fades...\n\nNotes disappear after π×10,000 seconds\n(that's 8h 43m in human time)\n\nFOMO = engagement! \nIdeas that matter, capture elsewhere 📸", color: 'bg-note-red' },
+];
+
+// Generate static tutorial notes with deterministic IDs
+const generateTutorialNotes = (): Note[] => {
+  return TUTORIAL_NOTES_CONTENT.map((content, index) => {
+    const col = index % TUTORIAL_COLS;
+    const row = Math.floor(index / TUTORIAL_COLS);
+    return {
+      id: `tutorial-note-${index}`,
+      x: (TUTORIAL_AREA_X + BigInt(col) * TUTORIAL_SPACING).toString(),
+      y: (TUTORIAL_AREA_Y + BigInt(row) * TUTORIAL_SPACING).toString(),
+      text: content.text,
+      color: content.color,
+      createdAt: Date.now(),
+      expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // Never expire (1 year)
+      rotation: (index % 5) - 2, // Slight rotation variety: -2, -1, 0, 1, 2
+      width: 220,
+      height: 220,
+      isTutorial: true,
+    };
+  });
+};
+
+const STATIC_TUTORIAL_NOTES = generateTutorialNotes();
+
 // Color map for cursor colors
 const COLOR_TO_HEX: Record<string, string> = {
   'bg-note-yellow': '#fff740',
@@ -648,38 +689,18 @@ const App: React.FC = () => {
 
   // --- Tutorial ---
   const handleShowTutorial = () => {
-    // Coordinates for the tutorial area
-    const startX = 10000n;
-    const startY = 10000n;
-    const spacing = 300n;
-    const cols = 4;
-    
-    const tutorialNotesContent = [
-      "👋 Welcome to Ephemeral Infinity Board!\n\nThis is a cosmic canvas where ideas flourish and fade after π×10⁴ seconds (≈8.7 hours).\n\nEverything you see is REAL and syncs worldwide! 🌐",
-      "✏️ Create Notes\n\nClick anywhere on the canvas to drop a new sticky note.\n\nTry it now! Click the canvas and start writing. ➡️",
-      "🗺️ Navigate the Infinite Canvas\n\n• Drag background = Pan around\n• Mouse wheel = Zoom in/out\n• This board is TRULY infinite!\n\nTry zooming out to see everything! 🔍",
-      "🔧 Tools (top toolbar)\n\n✋ Hand - Pan the canvas\n🔲 Select - Multi-select notes\n📝 Note - Create new notes\n\nSwitch tools to explore! →",
-      "🎯 Multi-Select Magic\n\n1. Click the Select tool (□)\n2. Drag a box around notes\n3. Or hold Shift + click notes\n\nSelected? Try grouping them! ⬇️",
-      "🤖 AI-Powered Grouping\n\nSelect 2+ notes, then click:\n'Group & Label' \n\nGemini AI will create a smart title for your cluster!\n\nMagic! ✨",
-      "💡 AI Brainstorm\n\n1. Click a note to select it\n2. Click the ✨ sparkle icon\n3. Gemini generates related ideas!\n\nThey spread around like a mind map 🧠",
-      "🔗 Share a Note\n\nSelect a note → Click the 🔗 icon\n\nCopies a direct link! Anyone clicking it will teleport to that exact note location.\n\nTry it! →",
-      "📦 Clusters = Smart Groups\n\nHover over a cluster to:\n• Edit the title\n• Change the color\n• Click X to ungroup\n\nOrganize your cosmic chaos! 🌈",
-      "⏳ Everything Fades...\n\nNotes disappear after π×10,000 seconds\n(that's 8h 43m in human time)\n\nFOMO = engagement! \nIdeas that matter, capture elsewhere 📸",
-      "🥧 Why π×10⁴ seconds?\n\nBecause cosmic order matters!\n\n31,415 seconds = a perfect mathematical cycle. Ideas flourish, then return to the void.\n\nEmbrace impermanence ✨"
-    ];
-
-    tutorialNotesContent.forEach((content, index) => {
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      
-      const noteX = (startX + BigInt(col) * spacing).toString();
-      const noteY = (startY + BigInt(row) * spacing).toString();
-      
-      createNote(noteX, noteY, content, true);
+    // Inject static tutorial notes if not already present
+    setNotes(prev => {
+      const hasTutorialNotes = prev.some(n => n.isTutorial);
+      if (hasTutorialNotes) return prev;
+      return [...prev, ...STATIC_TUTORIAL_NOTES];
     });
 
     // Jump to tutorial area
-    setViewportCenter({ x: (startX + spacing).toString(), y: (startY + spacing).toString() });
+    setViewportCenter({
+      x: (TUTORIAL_AREA_X + TUTORIAL_SPACING).toString(),
+      y: (TUTORIAL_AREA_Y + TUTORIAL_SPACING).toString()
+    });
     starfieldBurstRef.current?.(5, 200); // Teleport burst
     setToast("Teleporting to Tutorial Area... 🎓");
     setTimeout(() => setToast(null), 3000);
