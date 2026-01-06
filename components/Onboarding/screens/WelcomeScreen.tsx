@@ -32,19 +32,15 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           </span>
         </h1>
 
-        {/* Subtitle */}
-        <p className={`text-lg md:text-xl text-white/50 font-light max-w-md mx-auto mb-12 leading-relaxed transition-opacity duration-1000 ${showSecondMessage ? 'opacity-0' : 'opacity-100'}`}>
-          A calm space for thoughts that live for a moment.
-        </p>
-
-        {/* Second message overlay */}
-        {showSecondMessage && (
-          <div className="fixed inset-0 flex items-center justify-center animate-fade-in">
-            <p className="text-xl md:text-2xl text-white/70 font-light max-w-md mx-auto leading-relaxed">
-              Nothing piles up here. Nothing becomes noise.
-            </p>
-          </div>
-        )}
+        {/* Subtitle - crossfade between messages */}
+        <div className="relative h-16 mb-12">
+          <p className={`absolute inset-0 text-lg md:text-xl text-white/50 font-light max-w-md mx-auto leading-relaxed transition-opacity duration-1000 ${showSecondMessage ? 'opacity-0' : 'opacity-100'}`}>
+            A calm space for thoughts that live for a moment.
+          </p>
+          <p className={`absolute inset-0 text-xl md:text-2xl text-white/70 font-light max-w-md mx-auto leading-relaxed transition-opacity duration-1000 ${showSecondMessage ? 'opacity-100' : 'opacity-0'}`}>
+            Nothing piles up here. Nothing becomes noise.
+          </p>
+        </div>
 
         {/* Enter Button */}
         {!showSecondMessage && (
