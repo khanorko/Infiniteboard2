@@ -46,7 +46,7 @@ const ColorScreen: React.FC<ColorScreenProps> = ({ initialColor, onContinue }) =
 
       <div className="animate-fade-in-up w-full max-w-md relative z-10">
         {/* Card */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl">
+        <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl">
           <h2 className="text-2xl md:text-3xl font-light text-white/90 mb-2 tracking-wide">
             Pick your color
           </h2>

@@ -26,7 +26,7 @@ const NameScreen: React.FC<NameScreenProps> = ({ initialName, onContinue }) => {
     <div className="fixed inset-0 z-10 flex items-center justify-center px-6">
       <div className="animate-fade-in-up w-full max-w-md">
         {/* Card */}
-        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl">
+        <div className="bg-black/60 backdrop-blur-xl border border-white/10 rounded-3xl p-8 md:p-10 shadow-2xl">
           <h2 className="text-2xl md:text-3xl font-light text-white/90 mb-2 tracking-wide">
             What should we call you?
           </h2>
@@ -43,9 +43,9 @@ const NameScreen: React.FC<NameScreenProps> = ({ initialName, onContinue }) => {
               onChange={(e) => setName(e.target.value)}
               placeholder="Your name"
               maxLength={20}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-5 py-4
+              className="w-full bg-white/10 border border-white/10 rounded-xl px-5 py-4
                          text-white/90 placeholder:text-white/30 text-lg
-                         focus:outline-none focus:border-white/30 focus:bg-white/10
+                         focus:outline-none focus:border-white/30 focus:bg-white/15
                          transition-all duration-300"
             />
 
