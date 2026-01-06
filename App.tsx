@@ -1512,7 +1512,7 @@ const App: React.FC = () => {
         }}
         onShowTutorial={handleShowTutorial}
         onRandomLocation={handleRandomLocation}
-        noteCount={notes.length}
+        noteCount={notes.filter(n => !n.isTutorial).length}
       />
 
       <Minimap 
