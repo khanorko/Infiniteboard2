@@ -1227,13 +1227,16 @@ const App: React.FC = () => {
   // Bulk operations for selected notes
   const handleBulkColorChange = (color: string) => {
     if (selectedNoteIds.size === 0) return;
-    
-    setNotes(prev => prev.map(n => 
-      selectedNoteIds.has(n.id) ? { ...n, color } : n
+
+    // Only change color of non-tutorial notes
+    setNotes(prev => prev.map(n =>
+      selectedNoteIds.has(n.id) && !n.isTutorial ? { ...n, color } : n
     ));
-    
-    // Broadcast and save each note's color change
+
+    // Broadcast and save each note's color change (skip tutorial notes)
     selectedNoteIds.forEach(id => {
+      const note = notes.find(n => n.id === id);
+      if (note?.isTutorial) return;
       broadcast('NOTE_UPDATE', { id, color });
       if (USE_SUPABASE) {
         updateNoteInDb(id, { color });
@@ -1246,18 +1249,26 @@ const App: React.FC = () => {
 
   const handleBulkDelete = () => {
     if (selectedNoteIds.size === 0) return;
-    
-    const count = selectedNoteIds.size;
-    
-    // Delete all selected notes
-    selectedNoteIds.forEach(id => {
+
+    // Filter out tutorial notes - they can't be deleted
+    const deletableIds = Array.from(selectedNoteIds).filter(id => {
+      const note = notes.find(n => n.id === id);
+      return note && !note.isTutorial;
+    });
+
+    if (deletableIds.length === 0) return;
+
+    const count = deletableIds.length;
+
+    // Delete all selected non-tutorial notes
+    deletableIds.forEach(id => {
       broadcast('NOTE_DELETE', id);
       if (USE_SUPABASE) {
         deleteNoteFromDb(id);
       }
     });
-    
-    setNotes(prev => prev.filter(n => !selectedNoteIds.has(n.id)));
+
+    setNotes(prev => prev.filter(n => !deletableIds.includes(n.id)));
     setSelectedNoteIds(new Set());
     
     setToast(`Deleted ${count} notes`);
@@ -1526,8 +1537,8 @@ const App: React.FC = () => {
         onZoom={handleZoomBtn}
       />
 
-      {/* Floating Context Menu for Selection */}
-      {selectedNoteIds.size > 0 && (
+      {/* Floating Context Menu for Selection (hide if only tutorial notes selected) */}
+      {selectedNoteIds.size > 0 && notes.some(n => selectedNoteIds.has(n.id) && !n.isTutorial) && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-2 bg-gray-900/90 backdrop-blur-xl rounded-xl shadow-xl border border-white/10 p-2 z-50 animate-in fade-in slide-in-from-bottom-4">
           <span className="text-xs font-semibold text-white/60 px-2">{selectedNoteIds.size} Selected</span>
           <div className="h-4 w-px bg-white/10 mx-1" />
