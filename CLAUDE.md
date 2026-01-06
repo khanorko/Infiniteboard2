@@ -66,23 +66,42 @@ NOTE_LIFESPAN_MS = 31415000  // π × 10,000 seconds
 // AI limit: 5 requests per user (localStorage)
 ```
 
-## Business Developer Agent
+## Agents
 
-A specialized agent for commercial analysis is available at `.claude/agents/business-developer.md`.
+Two specialized agents are available in `.claude/agents/`:
 
-### Usage
-Invoke the business developer analysis by asking Claude to:
-- "Analyze this project from a commercial perspective"
+### Business Developer Agent
+**File:** `.claude/agents/business-developer.md`
+**Memory:** `.claude/agents/business-memory.md`
+
+**Invoke with:**
+- "Analyze this project commercially"
 - "Run business developer analysis"
 - "What are the monetization opportunities?"
 
-### Memory
-The agent maintains persistent memory at `.claude/agents/business-memory.md`.
-**Important:** When compacting conversations, always append session insights to the memory file.
+**Focus:** SaaS monetization, EMEA expansion, GDPR compliance, competitive positioning.
 
-### Agent Focus Areas
-- SaaS monetization strategies (EMEA focus)
-- Freemium/Premium conversion
-- GDPR compliance considerations
-- Competitive positioning
-- Growth and scalability analysis
+---
+
+### Product Manager Agent
+**File:** `.claude/agents/product-manager.md`
+**Memory:** `.claude/agents/pm-memory.md`
+
+**Invoke with:**
+- "Run PM analysis"
+- "Analyze user journey"
+- "Create a PRD for [feature]"
+- "Prioritize the backlog"
+
+**Focus:** User-centric growth, RICE prioritization, activation/retention metrics, PRD creation.
+
+**Principles:**
+1. Business Metrics First (ARR, LTV, CAC, Churn)
+2. UX is Non-Negotiable
+3. Outcome > Artifact
+4. Ethics as a Requirement
+
+---
+
+### Memory Protocol
+**Important:** When compacting conversations, always append session insights to the respective agent's memory file.
