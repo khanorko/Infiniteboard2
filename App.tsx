@@ -689,11 +689,30 @@ const App: React.FC = () => {
 
   // --- Tutorial ---
   const handleShowTutorial = () => {
-    // Inject static tutorial notes if not already present
+    // Clean up old tutorial area notes and inject static tutorial notes
     setNotes(prev => {
-      const hasTutorialNotes = prev.some(n => n.isTutorial);
-      if (hasTutorialNotes) return prev;
-      return [...prev, ...STATIC_TUTORIAL_NOTES];
+      // Remove any old notes in the tutorial area (within 1500 units of tutorial origin)
+      const tutorialAreaMinX = BigInt(TUTORIAL_AREA_X) - 500n;
+      const tutorialAreaMaxX = BigInt(TUTORIAL_AREA_X) + 1500n;
+      const tutorialAreaMinY = BigInt(TUTORIAL_AREA_Y) - 500n;
+      const tutorialAreaMaxY = BigInt(TUTORIAL_AREA_Y) + 1500n;
+
+      const filteredNotes = prev.filter(n => {
+        // Keep all tutorial notes
+        if (n.isTutorial) return true;
+        // Check if note is in tutorial area
+        const noteX = BigInt(n.x);
+        const noteY = BigInt(n.y);
+        const inTutorialArea = noteX >= tutorialAreaMinX && noteX <= tutorialAreaMaxX &&
+                               noteY >= tutorialAreaMinY && noteY <= tutorialAreaMaxY;
+        // Remove non-tutorial notes from tutorial area
+        return !inTutorialArea;
+      });
+
+      // Add static tutorial notes if not present
+      const hasTutorialNotes = filteredNotes.some(n => n.isTutorial);
+      if (hasTutorialNotes) return filteredNotes;
+      return [...filteredNotes, ...STATIC_TUTORIAL_NOTES];
     });
 
     // Jump to tutorial area
