@@ -80,6 +80,19 @@ const generateTutorialNotes = (): Note[] => {
 
 const STATIC_TUTORIAL_NOTES = generateTutorialNotes();
 
+// Get original position for a tutorial note by its ID
+const getTutorialNoteOriginalPosition = (noteId: string): { x: string; y: string } | null => {
+  const match = noteId.match(/^tutorial-note-(\d+)$/);
+  if (!match) return null;
+  const index = parseInt(match[1], 10);
+  const col = index % TUTORIAL_COLS;
+  const row = Math.floor(index / TUTORIAL_COLS);
+  return {
+    x: (TUTORIAL_AREA_X + BigInt(col) * TUTORIAL_SPACING).toString(),
+    y: (TUTORIAL_AREA_Y + BigInt(row) * TUTORIAL_SPACING).toString(),
+  };
+};
+
 // Color map for cursor colors
 const COLOR_TO_HEX: Record<string, string> = {
   'bg-note-yellow': '#fff740',
@@ -1086,12 +1099,23 @@ const App: React.FC = () => {
       setSelectionBox(null);
     }
 
-    // Sync moved notes to Supabase
+    // Sync moved notes to Supabase (but not tutorial notes)
     if (USE_SUPABASE && movedNotesDelta.current) {
       const { ids, dx, dy } = movedNotesDelta.current;
-      moveNotesInDb(ids, dx.toString(), dy.toString());
+      const nonTutorialIds = ids.filter(id => !id.startsWith('tutorial-note-'));
+      if (nonTutorialIds.length > 0) {
+        moveNotesInDb(nonTutorialIds, dx.toString(), dy.toString());
+      }
       movedNotesDelta.current = null;
     }
+
+    // Reset tutorial notes to their original positions after drag
+    setNotes(prev => prev.map(n => {
+      if (!n.isTutorial) return n;
+      const originalPos = getTutorialNoteOriginalPosition(n.id);
+      if (!originalPos) return n;
+      return { ...n, x: originalPos.x, y: originalPos.y };
+    }));
 
     setIsDragging(false);
     lastMousePos.current = null;
