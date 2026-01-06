@@ -158,7 +158,11 @@ const StickyNote: React.FC<StickyNoteProps> = ({
         backgroundColor: 'transparent',
         zIndex: selected || isResizing ? 50 : 10,
         opacity: note.isFalling ? 0 : distanceOpacity,
-        transition: note.isFalling ? 'none' : (isResizing ? 'none' : 'opacity 0.5s ease-out'),
+        transition: note.isFalling ? 'none' : (isResizing ? 'none' : (
+          note.isTutorial
+            ? 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.5s ease-out'
+            : 'opacity 0.5s ease-out'
+        )),
         filter: distanceOpacity < 0.7 ? `blur(${(1 - distanceOpacity) * 2}px)` : 'none',
       }}
       onMouseDown={handleMouseDown}
