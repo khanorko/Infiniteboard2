@@ -11,6 +11,8 @@ import MobileNoteView from './components/MobileNoteView';
 import { brainstormNotes, generateClusterTitle } from './services/geminiService';
 import { useAIUsage } from './hooks/useAIUsage';
 import { useUserPreferences } from './hooks/useUserPreferences';
+import { useNotifications } from './hooks/useNotifications';
+import NotificationPrompt from './components/NotificationPrompt';
 import { Loader2, MousePointer2, BoxSelect, Ungroup, Wifi, WifiOff, Sparkles, Trash2 } from 'lucide-react';
 import { parseBigPoint, getRelativeOffset, addDeltaToBigPoint, BigPoint, encodeCoords, decodeCoords } from './utils/bigCoords';
 import {
@@ -107,7 +109,19 @@ const App: React.FC = () => {
   
   // AI Usage Limits
   const { remainingCredits, checkLimit, incrementUsage, isLimitReached } = useAIUsage();
-  
+
+  // Notifications for retention
+  const {
+    settings: notificationSettings,
+    isSupported: notificationsSupported,
+    enableNotifications,
+    disableNotifications,
+  } = useNotifications();
+
+  // Track if user is "activated" (created 2+ notes or used AI)
+  const [showNotificationPrompt, setShowNotificationPrompt] = useState(false);
+  const userNotesCreated = useRef(0);
+
   // Interaction State
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<Point>({ x: 0, y: 0 });
@@ -180,7 +194,16 @@ const App: React.FC = () => {
       setFocusedNoteId(newNote.id);
       setMobileZoom(1.0);
     }
-  }, [userColor, isMobile]);
+
+    // Track activation for notification prompt (show after 2nd user-created note)
+    if (!aiGenerated) {
+      userNotesCreated.current += 1;
+      if (userNotesCreated.current === 2 && notificationsSupported && notificationSettings.permission !== 'granted') {
+        // Delay prompt slightly so it doesn't interrupt the flow
+        setTimeout(() => setShowNotificationPrompt(true), 2000);
+      }
+    }
+  }, [userColor, isMobile, notificationsSupported, notificationSettings.permission]);
 
   // --- Effects ---
 
@@ -1541,6 +1564,19 @@ const App: React.FC = () => {
         )}
       </div>
 
+      {/* Notification Prompt for Retention */}
+      {showNotificationPrompt && (
+        <NotificationPrompt
+          onEnable={async () => {
+            const success = await enableNotifications();
+            if (success) setShowNotificationPrompt(false);
+            return success;
+          }}
+          onDismiss={() => setShowNotificationPrompt(false)}
+          isSupported={notificationsSupported}
+          permission={notificationSettings.permission}
+        />
+      )}
 
     </div>
     </>
