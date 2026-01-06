@@ -80,7 +80,13 @@ const App: React.FC = () => {
   const [clusters, setClusters] = useState<Cluster[]>([]);
   
   // Viewport center in BigInt (stored as strings for state)
-  const [viewportCenter, setViewportCenter] = useState<{ x: string; y: string }>({ x: '0', y: '0' });
+  // Start at random coordinates so users don't overlap
+  const [viewportCenter, setViewportCenter] = useState<{ x: string; y: string }>(() => {
+    const range = 1000000000000; // 1 trillion
+    const randomX = Math.floor(Math.random() * range * 2) - range;
+    const randomY = Math.floor(Math.random() * range * 2) - range;
+    return { x: randomX.toString(), y: randomY.toString() };
+  });
   const [scale, setScale] = useState(1);
   const [activeTool, setActiveTool] = useState<ToolType>(ToolType.HAND);
   
