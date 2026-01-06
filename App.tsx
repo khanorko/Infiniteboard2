@@ -1152,18 +1152,28 @@ const App: React.FC = () => {
       setSelectionBox(null);
     }
 
-    // Sync moved notes to Supabase (but not tutorial notes)
+    // Track which notes need to slide out of tutorial area
+    const notesInTutorialArea = new Set<string>();
+    notes.forEach(n => {
+      if (!n.isTutorial && isInTutorialArea(n.x, n.y)) {
+        notesInTutorialArea.add(n.id);
+      }
+    });
+
+    // Sync moved notes to Supabase (but not tutorial notes or notes that will slide)
     if (USE_SUPABASE && movedNotesDelta.current) {
       const { ids, dx, dy } = movedNotesDelta.current;
-      const nonTutorialIds = ids.filter(id => !id.startsWith('tutorial-note-'));
-      if (nonTutorialIds.length > 0) {
-        moveNotesInDb(nonTutorialIds, dx.toString(), dy.toString());
+      const idsToSync = ids.filter(id =>
+        !id.startsWith('tutorial-note-') && !notesInTutorialArea.has(id)
+      );
+      if (idsToSync.length > 0) {
+        moveNotesInDb(idsToSync, dx.toString(), dy.toString());
       }
       movedNotesDelta.current = null;
     }
 
     // Reset tutorial notes to their original positions after drag
-    // Also slide out any non-tutorial notes that ended up in tutorial area
+    // Also mark notes in tutorial area for sliding
     setNotes(prev => prev.map(n => {
       // Tutorial notes snap back
       if (n.isTutorial) {
@@ -1172,26 +1182,35 @@ const App: React.FC = () => {
         return { ...n, x: originalPos.x, y: originalPos.y };
       }
       // Non-tutorial notes in tutorial area slide out
-      if (isInTutorialArea(n.x, n.y)) {
+      if (notesInTutorialArea.has(n.id)) {
         return { ...n, isSliding: true };
       }
       return n;
     }));
 
     // After a brief delay, move sliding notes outside tutorial area
-    setTimeout(() => {
-      setNotes(prev => prev.map(n => {
-        if (n.isSliding && !n.isTutorial) {
-          const newPos = getPositionOutsideTutorial(n.x, n.y);
-          return { ...n, x: newPos.x, y: newPos.y };
-        }
-        return n;
-      }));
-      // Remove sliding flag after animation
+    if (notesInTutorialArea.size > 0) {
       setTimeout(() => {
-        setNotes(prev => prev.map(n => n.isSliding ? { ...n, isSliding: false } : n));
-      }, 350);
-    }, 50);
+        setNotes(prev => {
+          const updatedNotes = prev.map(n => {
+            if (n.isSliding && !n.isTutorial) {
+              const newPos = getPositionOutsideTutorial(n.x, n.y);
+              // Sync the new position to database
+              if (USE_SUPABASE) {
+                updateNoteInDb(n.id, { x: newPos.x, y: newPos.y });
+              }
+              return { ...n, x: newPos.x, y: newPos.y };
+            }
+            return n;
+          });
+          return updatedNotes;
+        });
+        // Remove sliding flag after animation
+        setTimeout(() => {
+          setNotes(prev => prev.map(n => n.isSliding ? { ...n, isSliding: false } : n));
+        }, 350);
+      }, 50);
+    }
 
     setIsDragging(false);
     lastMousePos.current = null;
