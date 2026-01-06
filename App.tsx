@@ -39,7 +39,7 @@ const USE_SUPABASE = isSupabaseConfigured();
 // --- Tutorial Notes (Static, Pre-generated) ---
 const TUTORIAL_AREA_X = 10000n;
 const TUTORIAL_AREA_Y = 10000n;
-const TUTORIAL_SPACING = 300n;
+const TUTORIAL_SPACING = 400n;  // Increased for larger notes
 const TUTORIAL_COLS = 4;
 
 const TUTORIAL_NOTES_CONTENT = [
@@ -71,8 +71,8 @@ const generateTutorialNotes = (): Note[] => {
       createdAt: Date.now(),
       expiresAt: Date.now() + 365 * 24 * 60 * 60 * 1000, // Never expire (1 year)
       rotation: (index % 5) - 2, // Slight rotation variety: -2, -1, 0, 1, 2
-      width: 220,
-      height: 220,
+      width: 350,
+      height: 350,
       isTutorial: true,
     };
   });
