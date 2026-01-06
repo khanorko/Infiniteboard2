@@ -51,7 +51,10 @@ const TUTORIAL_NOTES_CONTENT = [
   { text: "🤖 AI-Powered Grouping\n\nSelect 2+ notes, then click:\n'Group & Label' \n\nGemini AI will create a smart title for your cluster!\n\nMagic! ✨", color: 'bg-note-purple' },
   { text: "💡 AI Brainstorm\n\n1. Click a note to select it\n2. Click the ✨ sparkle icon\n3. Gemini generates related ideas!\n\nThey spread around like a mind map 🧠", color: 'bg-note-teal' },
   { text: "🔗 Share a Note\n\nSelect a note → Click the 🔗 icon\n\nCopies a direct link! Anyone clicking it will teleport to that exact note location.\n\nTry it! →", color: 'bg-note-lime' },
+  { text: "📦 Clusters = Smart Groups\n\nHover over a cluster to:\n• Edit the title\n• Change the color\n• Click X to ungroup\n\nOrganize your cosmic chaos! 🌈", color: 'bg-note-yellow' },
   { text: "⏳ Everything Fades...\n\nNotes disappear after π×10,000 seconds\n(that's 8h 43m in human time)\n\nFOMO = engagement! \nIdeas that matter, capture elsewhere 📸", color: 'bg-note-red' },
+  { text: "🥧 Why π×10⁴ seconds?\n\nBecause cosmic order matters!\n\n31,415 seconds = a perfect mathematical cycle. Ideas flourish, then return to the void.\n\nEmbrace impermanence ✨", color: 'bg-note-blue' },
+  { text: "🚀 Pro Tips\n\n• Use 'Random' to find private space\n• Share links to collaborate\n• AI brainstorm for inspiration\n• Notes sync across all devices!\n\nHave fun exploring! 🌌", color: 'bg-note-green' },
 ];
 
 // Generate static tutorial notes with deterministic IDs
