@@ -1175,7 +1175,7 @@ const App: React.FC = () => {
     // After a brief delay, move sliding notes outside tutorial area
     setTimeout(() => {
       setNotes(prev => prev.map(n => {
-        if (n.isSliding && !n.isTutorial && isInTutorialArea(n.x, n.y)) {
+        if (n.isSliding && !n.isTutorial) {
           const newPos = getPositionOutsideTutorial(n.x, n.y);
           return { ...n, x: newPos.x, y: newPos.y };
         }
@@ -1183,7 +1183,7 @@ const App: React.FC = () => {
       }));
       // Remove sliding flag after animation
       setTimeout(() => {
-        setNotes(prev => prev.map(n => ({ ...n, isSliding: false })));
+        setNotes(prev => prev.map(n => n.isSliding ? { ...n, isSliding: false } : n));
       }, 350);
     }, 50);
 
