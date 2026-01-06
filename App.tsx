@@ -725,32 +725,60 @@ const App: React.FC = () => {
         if (progress < 1) {
           requestAnimationFrame(animateZoom);
         } else {
-          // Zoom complete - create the first note with glow
-          const noteId = crypto.randomUUID();
-          const newNote: Note = {
-            id: noteId,
-            x: data.startCoordinates.x,
-            y: data.startCoordinates.y,
-            text: data.firstNoteText,
-            color: data.userColor,
-            createdAt: Date.now(),
-            expiresAt: Date.now() + NOTE_LIFESPAN_MS,
-            rotation: Math.random() * 6 - 3,
-            width: 200,
-            height: 200,
-          };
-          setNotes(prev => [...prev, newNote]);
-          setFirstNoteId(noteId);
-          
-          if (USE_SUPABASE) {
-            createNoteInDb(newNote);
+          // Zoom complete - create note(s)
+          if (data.firstNoteText) {
+            // Standard onboarding: create the user's first note
+            const noteId = crypto.randomUUID();
+            const newNote: Note = {
+              id: noteId,
+              x: data.startCoordinates.x,
+              y: data.startCoordinates.y,
+              text: data.firstNoteText,
+              color: data.userColor,
+              createdAt: Date.now(),
+              expiresAt: Date.now() + NOTE_LIFESPAN_MS,
+              rotation: Math.random() * 6 - 3,
+              width: 200,
+              height: 200,
+            };
+            setNotes(prev => [...prev, newNote]);
+            setFirstNoteId(noteId);
+
+            if (USE_SUPABASE) {
+              createNoteInDb(newNote);
+            }
+          } else {
+            // Quick Start: create seed notes to show what the product does
+            const seedNotes = [
+              { text: "👋 Welcome!\n\nClick anywhere to create a note", offset: { x: 0, y: 0 } },
+              { text: "💡 Try the ✨ button\nto brainstorm with AI", offset: { x: 220, y: -30 } },
+              { text: "⏳ Notes fade after\n~8.7 hours", offset: { x: -220, y: 20 } },
+            ];
+
+            const newNotes: Note[] = seedNotes.map((seed, i) => ({
+              id: crypto.randomUUID(),
+              x: (BigInt(data.startCoordinates.x) + BigInt(seed.offset.x)).toString(),
+              y: (BigInt(data.startCoordinates.y) + BigInt(seed.offset.y)).toString(),
+              text: seed.text,
+              color: NOTE_COLORS[i % NOTE_COLORS.length],
+              createdAt: Date.now(),
+              expiresAt: Date.now() + NOTE_LIFESPAN_MS,
+              rotation: Math.random() * 6 - 3,
+              width: 200,
+              height: 200,
+            }));
+
+            setNotes(prev => [...prev, ...newNotes]);
+            setFirstNoteId(newNotes[0].id);
+
+            // Don't save seed notes to DB - they're local only
           }
-          
+
           // Hide welcome text and end entering state
           setTimeout(() => {
             setShowWelcomeText(false);
             setIsEnteringBoard(false);
-            
+
             // Show tutorial popovers
             setTimeout(() => {
               setShowTutorialPopovers(true);

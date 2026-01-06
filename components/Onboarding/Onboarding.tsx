@@ -5,6 +5,7 @@ import NameScreen from './screens/NameScreen';
 import ColorScreen from './screens/ColorScreen';
 import FirstNoteScreen from './screens/FirstNoteScreen';
 import { formatSectorCoord } from '../../utils/bigCoords';
+import { NOTE_COLORS } from '../../types';
 
 type OnboardingStep = 'welcome' | 'name' | 'color' | 'firstNote' | 'transitioning' | 'complete';
 
@@ -40,6 +41,26 @@ const Onboarding: React.FC<OnboardingProps> = ({
   const handleEnter = useCallback(() => {
     setStep('name');
   }, []);
+
+  // Quick Start - skip all onboarding with random defaults
+  const handleQuickStart = useCallback(() => {
+    const randomName = `Guest-${Math.floor(Math.random() * 10000)}`;
+    const randomColor = NOTE_COLORS[Math.floor(Math.random() * NOTE_COLORS.length)];
+
+    // Generate random coordinates
+    const range = 1000000000000; // 1 trillion
+    const randomX = Math.floor(Math.random() * range * 2) - range;
+    const randomY = Math.floor(Math.random() * range * 2) - range;
+
+    // Skip directly to complete
+    setStep('complete');
+    onComplete({
+      userName: randomName,
+      userColor: randomColor,
+      firstNoteText: '',
+      startCoordinates: { x: randomX.toString(), y: randomY.toString() },
+    });
+  }, [onComplete]);
 
   const handleNameContinue = useCallback((name: string) => {
     setUserName(name);
@@ -107,6 +128,7 @@ const Onboarding: React.FC<OnboardingProps> = ({
         {step === 'welcome' && (
           <WelcomeScreen
             onEnter={handleEnter}
+            onQuickStart={handleQuickStart}
             skipNextTime={skipOnboarding}
             onSkipChange={onSkipChange}
           />
